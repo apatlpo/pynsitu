@@ -18,9 +18,9 @@ from matplotlib.colors import cnames
 import folium
 from folium.plugins import MeasureControl, MousePosition
 
-from .utils import dec2degmin, \
-                plot_map, plot_bathy, \
-                load_bathy_contours, store_bathy_contours
+#from .utils import dec2degmin, \
+#                plot_map, plot_bathy, \
+#                load_bathy_contours, store_bathy_contours
 
 #_bounds_default = [6.4, 6.6, 42.92, 43.2]
 _bounds_default = [6., 6.6, 42.7, 43.2]
@@ -166,7 +166,7 @@ class campaign(object):
         if ".yaml" not in file:
             file = file+".yaml"
         with open(file, 'r') as stream:
-            cp = yaml.load(stream)
+            cp = yaml.full_load(stream)
 
         default_attr = {'name': 'unknown',
                         'lon': None, 'lat': None,

@@ -140,7 +140,7 @@ def plot_map(fig=None,
         if cp is not None:
             bounds = cp.bounds
         else:
-            bounds = _bounds_default
+            assert False, "bounds need to be provided somehow"
 
     ax = fig.add_subplot(111, projection=crs)
     ax.set_extent(bounds, crs=crs)

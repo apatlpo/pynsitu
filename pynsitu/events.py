@@ -18,16 +18,17 @@ from matplotlib.colors import cnames
 import folium
 from folium.plugins import MeasureControl, MousePosition
 
+from .geo import plot_map, plot_bathy
 #from .utils import dec2degmin, \
 #                plot_map, plot_bathy, \
 #                load_bathy_contours, store_bathy_contours
 
 #_bounds_default = [6.4, 6.6, 42.92, 43.2]
-_bounds_default = [6., 6.6, 42.7, 43.2]
+#_bounds_default = [6., 6.6, 42.7, 43.2]
 
 class event(object):
 
-    def __init__(self, label=None, logline=None, coord_min=True):
+    def __init__(self, label=None, logline=None, coord_min=None):
 
         # split string
         l=logline.split()
@@ -42,16 +43,17 @@ class event(object):
                                    infer_datetime_format=True,
                                    )
 
-        if len(l)>2:
-            # lon, lat data
-            if coord_min:
-                lon_deg = float(l[2])
-                self.lon = lon_deg + np.sign(lon_deg) * float(l[3])/60.
-                lat_deg = float(l[4])
-                self.lat = lat_deg + np.sign(lat_deg) * float(l[5])/60.
-            else:
-                self.lon = float(l[2])
-                self.lat = float(l[3])
+        # lon, lat data
+        if len(l)==6 and coord_min:
+            # degrees + minute decimals
+            lon_deg = float(l[2])
+            self.lon = lon_deg + np.sign(lon_deg) * float(l[3])/60.
+            lat_deg = float(l[4])
+            self.lat = lat_deg + np.sign(lat_deg) * float(l[5])/60.
+        elif len(l)==4 and not coord_min:
+            # degrees decimal
+            self.lon = float(l[2])
+            self.lat = float(l[3])
         else:
             self.lon = None
             self.lat = None
@@ -82,6 +84,10 @@ class deployment(object):
         else:
             self.start=event(label='start', logline=loglines[0])
             self.end = event(label='end', logline=loglines[1])
+            if len(loglines)==3:
+                self.info = loglines[2]["info"]
+            else:
+                self.info = dict()
 
     def __repr__(self):
         return 'cognac.insitu.events.deployment({})'.format(str(self))
@@ -171,8 +177,9 @@ class campaign(object):
         default_attr = {'name': 'unknown',
                         'lon': None, 'lat': None,
                         'start': None, 'end': None,
-                        'path': './',
+                        'path': None,
                         'bathy': None,
+                        'raw': '',
                         }
         for key, value in default_attr.items():
             if key in cp:
@@ -181,6 +188,10 @@ class campaign(object):
                 setattr(self, key, value)
 
         if self.lon and self.lat:
+            # ensure coords are floats
+            self.lon = tuple(float(l) for l in self.lon)
+            self.lat = tuple(float(l) for l in self.lat)
+            #
             self.bounds = self.lon + self.lat
             self.lon_mid = (self.lon[0]+self.lon[1])*.5
             self.lat_mid = (self.lat[0]+self.lat[1])*.5
@@ -190,13 +201,18 @@ class campaign(object):
         if self.end:
             self.end = pd.Timestamp(self.end)
 
+        # path to raw data
+        self.pathr = os.path.join(self.path, self.raw)
+
+        # path to processed data
         if 'pathp' in cp:
             self.pathp = cp['pathp']
         else:
-            self.pathp = self.path+'datap/'
+            self.pathp = os.path.join(self.path, 'datap')
 
         self._units = {}
         for u, info in cp['units'].items():
+            print(u)
             self._units[u] = objdict(path=self.path, label=u)
             for d, value in info['deployments'].items():
                 self._units[u][d] = deployment(label=d, loglines=value)
@@ -251,8 +267,8 @@ class campaign(object):
                        bathy=self.bathy['label'],
                        levels=self.bathy['levels'],
                        )
-        dkwargs.update((k,v) for k,v in kwargs.items() if v is not None)
-        #dkwargs.update(kwargs)
+        #dkwargs.update((k,v) for k,v in kwargs.items() if v is not None)
+        dkwargs.update(kwargs)
         fac = plot_map(cp=self, **dkwargs)
         plot_bathy(fac, **dkwargs)
         return fac
@@ -296,7 +312,7 @@ class campaign(object):
                       )
 
         # bathymetric contours
-        contour_file = self.pathp+'contours.geojson'
+        contour_file = os.path.join(self.pathp,'contours.geojson')
         if (not os.path.isfile(contour_file) or
             (os.path.isfile(contour_file) and overwrite_contours)
             ):
@@ -374,8 +390,9 @@ class campaign(object):
 
     def timeline(self,
                  height=.3,
-                 legend_loc=3,
+                 legend=3,
                  skip_ship=True,
+                 start_scale=1,
                  ):
         """ Plot the campaign deployment timeline
         """
@@ -392,7 +409,8 @@ class campaign(object):
             for d in u:
                 start = mdates.date2num(d.start.time)
                 end = mdates.date2num(d.end.time)
-                rect = Rectangle((start, y-height/2.), end-start, height, color=u['color'])
+                rect = Rectangle((start, y-height/2.), end-start, height,
+                                 color=u['color'])
                 ax.add_patch(rect)
                 starts.append(start)
                 ends.append(end)
@@ -403,7 +421,8 @@ class campaign(object):
         ax.set_title(self.name)
         ax.set_yticks(yticks)
         ax.set_yticklabels(yticks_labels)
-        self.add_legend(ax, loc=legend_loc, skip_ship=skip_ship)
+        if legend:
+            self.add_legend(ax, loc=legend, skip_ship=skip_ship)
 
         # assign date locator / formatter to the x-axis to get proper labels
         locator = mdates.AutoDateLocator(minticks=3)
@@ -413,7 +432,7 @@ class campaign(object):
 
         # set the limits
         delta_time = max(ends) - min(starts)
-        plt.xlim([min(starts)-delta_time*.05, max(ends)+delta_time*.05])
+        plt.xlim([min(starts)-delta_time*.05*start_scale, max(ends)+delta_time*.05])
         plt.ylim([y+1-2*height,2*height])
 
     def add_legend(self, ax, labels=None, skip_ship=True, **kwargs):
@@ -449,7 +468,7 @@ class campaign(object):
         ax.set_yticklabels(yticks_labels)
         self.add_legend(ax, loc=2)
 
-    def load(self, item, unit=None):
+    def load(self, item, toframe=False):
         """ load processed data files
         recall item
 
@@ -459,21 +478,39 @@ class campaign(object):
             {'unit0': {'deployment0': data, ...}}
         """
 
+        # straight netcdf file
+        if ".nc" in item:
+            file = os.path.join(self.pathp, item)
+            ds = xr.open_dataset(file)
+            if toframe:
+                ds = ds.to_dataframe()
+            return ds
+
+        _files = self._get_unit_files(item)
+        D = {}
+        for d, f in _files.items():
+            ds = xr.open_dataset(f)
+            if toframe:
+                ds = ds.to_dataframe()
+            D[d] = ds
+        if len(D)==1:
+            return D[0]
+        else:
+            return D
+
         # particular units
         if item=='ship':
-            ship_file = self.pathp+'ship.nc'
+            ship_file = os.path.join(self.pathp, 'ship.nc')
             if os.path.isfile(ship_file):
                 return xr.open_dataset(ship_file).to_dataframe()
             else:
                 return
         elif item=="argo":
-            argo_file = self.pathp+'argo.nc'
+            argo_file = os.path.join(self.pathp, 'argo.nc')
             if os.path.isfile(argo_file):
                 return xr.open_dataset(argo_file).compute()
             else:
                 return
-
-        data_files = self._get_processed_files(item=item)
 
         _files = [f.split('/')[-1] for f in data_files]
 
@@ -503,6 +540,19 @@ class campaign(object):
                        }
         return data
 
+    def _get_unit_files(self, unit, extension="nc"):
+        """get all processed files associated with one unit"""
+        files = sorted(glob(os.path.join(self.pathp, unit+'*.'+extension)))
+        # find out whether there are multiple deployments
+        if len(files)==1:
+            return dict(d0=files[0])
+        D = {}
+        for f in files:
+            s = f.split("/")[-1].split(".")[0].replace(unit,"").split("_")
+            assert len(s)==2, f"there must be 0 or 1 underscore, but we have: {f}, {s}"
+            D[s[1]] = f
+        return D
+
     def _get_processed_files(self,
                    unit='*',
                    item='*',
@@ -523,9 +573,9 @@ class campaign(object):
         else:
             _item = item+'_'
         if any([_=='*' for _ in [unit, item, deployment]]):
-            return glob(self.pathp+unit+'_'+_item+deployment+'.'+extension)
+            return glob(os.path.join(self.pathp, unit+'_'+_item+deployment+'.'+extension))
         else:
-            return self.pathp+unit+'_'+_item+deployment+'.'+extension
+            return os.path.join(self.pathp, unit+'_'+_item+deployment+'.'+extension)
 
 def _load_processed_file(file, **kwargs):
     """ load preprocessed file, select object type based on filename

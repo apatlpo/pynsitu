@@ -10,8 +10,8 @@ from matplotlib.colors import cnames
 ##
 from bokeh.io import output_notebook, show
 from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, CustomJSHover, FuncTickFormatter
-from bokeh.models import CustomJS, CrosshairTool
+from bokeh.models import ColumnDataSource, HoverTool, FuncTickFormatter
+from bokeh.models import CrosshairTool
 from bokeh.plotting import figure
 
 import gsw
@@ -46,6 +46,7 @@ class PdSeawaterAccessor:
         t_potential = ["temperature", "temp", "t"]
         s_potential = ["salinity", "s"]
         p_potential = ["pressure", "p"]
+        d_potential = ["depth",]
         for c in list(obj.columns):
             if c.lower() in t_potential:
                 t = c
@@ -53,7 +54,9 @@ class PdSeawaterAccessor:
                 s = c
             elif c.lower() in p_potential:
                 p = c
-        if not t or not s or not p:
+            elif c.lower() in d_potential:
+                d = c
+        if not t or not s or (not p and not d):
             raise AttributeError("Did not find temperature, salinity and pressure columns. "
                                  +"Case insentive options are: "
                                  + "/".join(t_potential)
@@ -61,6 +64,12 @@ class PdSeawaterAccessor:
                                  + " , " + "/".join(p_potential)
                                 )
         else:
+            # compute pressure from depth and depth from pressure if need be
+            if not p:
+                p = "pressure"
+                obj[p] = gsw.p_from_z(-obj[d], self._lat.median())
+            if not d:
+                obj["depth"] = -gsw.z_from_p(obj[p], self._lat.median())
             return t, s, p
 
     def _update_SA_PT(self):
@@ -76,12 +85,12 @@ class PdSeawaterAccessor:
         df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
         return df
 
-    def apply_PA_PT(self, fun):
+    def apply_PA_PT(self, fun, *args, **kwargs):
         """ apply a function that requires working with projected coordinates x/y"""
         # ensures projection exists
         #self.project()
         # apply function
-        df = fun(self._obj)
+        df = fun(self._obj, *args, **kwargs)
         # update lon/lat
         #df[self._lon], df[self._lat] = _xy2lonlat(df.x, df.y, self.projection)
         return df
@@ -109,15 +118,19 @@ class PdSeawaterAccessor:
         kwargs:
             passed to resample
         '''
-        def _resample(df):
-            if op=="mean":
-                df = df.resample(rule, **kwargs).mean()
-            elif op=="median":
-                df = df.resample(rule, **kwargs).median()
-            if interpolate:
-                df = df.interpolate(method='linear')
-            return df
-        return self.apply_PA_PT(_resample)
+        return self.apply_PA_PT(_resample, rule, op, interpolate, **kwargs)
+
+    def compute_vertical_profile(self,
+                                 step,
+                                 speed_threshold=None,
+                                 op="mean",
+                                 depth_min=0,
+                                 depth_max=None,
+                                 ):
+        return self.apply_PA_PT(_get_profile,
+                                depth_min, depth_max, step, speed_threshold,
+                                op,
+                                )
 
     def plot_bokeh(self,
                    unit=None,
@@ -156,7 +169,7 @@ class PdSeawaterAccessor:
                            color='salmon', line_width=2)
 
 
-        def add_box(label, column, **kwargs):
+        def add_box(label, column, y_reverse=False, **kwargs):
             # create a new plot and add a renderer
             s = figure(tools=TOOLS,
                        plot_width=plot_width,
@@ -175,11 +188,13 @@ class PdSeawaterAccessor:
                 ))
             _add_start_end(s, df[column])
             s.add_tools(crosshair)
+            if y_reverse:
+                s.y_range.flipped = True
             return s
 
         s1 = add_box("temperature [degC]", self._t)
         s2 = add_box("salinity [psu]", self._s, x_range=s1.x_range)
-        s3 = add_box("pressure [dbar]", self._p, x_range=s1.x_range)
+        s3 = add_box("depth [m]", self._p, y_reverse=True, x_range=s1.x_range)
         grid = [[s1, s2, s3]]
         if not isinstance(self._lon, float) and not isinstance(self._lat, float):
             s4 = add_box("longitude [deg]", "longitude", x_range=s1.x_range)
@@ -188,6 +203,42 @@ class PdSeawaterAccessor:
         p = gridplot(grid)
         show(p)
 
+def _resample(df, rule, op, interpolate, **kwargs):
+    """temporal resampling"""
+    if op=="mean":
+        df = df.resample(rule, **kwargs).mean()
+    elif op=="median":
+        df = df.resample(rule, **kwargs).median()
+    if interpolate:
+        df = df.interpolate(method='linear')
+    return df
+
+def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
+    """ construct a vertical profile from time series
+    """
+    assert "depth" in df, "depth must be a column to produce a vertical profile"
+    # make a copy and get rid of duplicates
+    df = df[~df.index.duplicated(keep='first')]
+    if speed_threshold:
+        if "time" not in df.colums:
+            # assumes time is the index
+            dt = pd.Series(df.index).diff()/pd.Timedelta("1s")
+            dt.index = df.index
+            df["dt"] = dt
+        else:
+            df["dt"] = df["time"].diff()/pd.Timedelta("1s")
+        dzdt = np.abs(df["depth"])
+        df = df.loc[dzdt<speed_threshold]
+    if depth_max is None:
+        depth_max = float(df["depth"].max())
+    bins = np.arange(depth_min, depth_max, step)
+    df["depth_cut"] = pd.cut(df.depth, bins)
+    if op=="mean":
+        df = df.groupby(df.depth_cut).mean().drop(columns=["depth"])
+    print()
+    df["depth"] = df.index.map(lambda bin: bin.mid).astype(float)
+    df["z"] = -df["depth"]
+    return df.set_index("z")
 
 # ----------------------------- xarray accessor --------------------------------
 

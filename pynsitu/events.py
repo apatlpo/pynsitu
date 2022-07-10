@@ -8,6 +8,7 @@ import yaml
 import numpy as np
 import pandas as pd
 import xarray as xr
+import math
 
 import matplotlib.pyplot as plt
 from  matplotlib.dates import date2num, datetime
@@ -18,7 +19,7 @@ from matplotlib.colors import cnames
 import folium
 from folium.plugins import MeasureControl, MousePosition
 
-from .geo import plot_map, plot_bathy
+from .geo import plot_map, plot_bathy, load_bathy_contours
 #from .utils import dec2degmin, \
 #                plot_map, plot_bathy, \
 #                load_bathy_contours, store_bathy_contours
@@ -44,13 +45,14 @@ class event(object):
                                    )
 
         # lon, lat data
-        if len(l)==6 and coord_min:
+        if len(l)==6 or coord_min==True:
             # degrees + minute decimals
             lon_deg = float(l[2])
-            self.lon = lon_deg + np.sign(lon_deg) * float(l[3])/60.
+            self.lon = lon_deg + math.copysign(1,lon_deg) * float(l[3])/60.
             lat_deg = float(l[4])
-            self.lat = lat_deg + np.sign(lat_deg) * float(l[5])/60.
-        elif len(l)==4 and not coord_min:
+            self.lat = lat_deg + math.copysign(1,lat_deg) * float(l[5])/60.
+            # -0. is allowed but np.sign does not recognize it, hence the call to math.copysign
+        elif len(l)==4 or coord_min==False:
             # degrees decimal
             self.lon = float(l[2])
             self.lat = float(l[3])
@@ -264,18 +266,18 @@ class campaign(object):
         Wrapper around utils.plot_map, see related doc
         """
         dkwargs = dict(bounds=self.bounds,
-                       bathy=self.bathy['label'],
+                       #bathy=self.bathy['label'],
                        levels=self.bathy['levels'],
                        )
         #dkwargs.update((k,v) for k,v in kwargs.items() if v is not None)
         dkwargs.update(kwargs)
         fac = plot_map(cp=self, **dkwargs)
-        plot_bathy(fac, **dkwargs)
+        plot_bathy(fac, bathy=self.bathy['label'], **dkwargs)
         return fac
 
     def map(self,
-            width='100%',
-            height='100%',
+            width='70%',
+            height='70%',
             tiles='Cartodb Positron',
             ignore=[],
             overwrite_contours=False,
@@ -301,8 +303,6 @@ class campaign(object):
 
         if ignore=='all':
             ignore=self._units
-        if "ship" not in ignore:
-            ignore = ignore + ["ship"]
 
         m = folium.Map(location=[self.lat_mid, self.lon_mid],
                        width=width,
@@ -312,7 +312,7 @@ class campaign(object):
                       )
 
         # bathymetric contours
-        contour_file = os.path.join(self.pathp,'contours.geojson')
+        contour_file = os.path.join(self.pathp,'bathy_contours.geojson')
         if (not os.path.isfile(contour_file) or
             (os.path.isfile(contour_file) and overwrite_contours)
             ):
@@ -350,7 +350,6 @@ class campaign(object):
                 for d in u:
                     if d.start.lat is None:
                         continue
-                    #print(uname, d.start.lon, d.start.lat, d.end.lon, d.end.lat)
                     folium.Polygon([(d.start.lat, d.start.lon),
                                     (d.end.lat, d.end.lon)
                                     ],
@@ -435,18 +434,36 @@ class campaign(object):
         plt.xlim([min(starts)-delta_time*.05*start_scale, max(ends)+delta_time*.05])
         plt.ylim([y+1-2*height,2*height])
 
-    def add_legend(self, ax, labels=None, skip_ship=True, **kwargs):
+    def add_legend(self, ax,
+                   labels=None,
+                   skip_ship=True,
+                   colors=None,
+                   **kwargs,
+                   ):
         """ Add legend for units on an axis,
         Used for timelines as well as maps
+
+        Parameters
+        ----------
+        ax: pyplot.axes
+        labels: list, optional
+            List of labels to consider amongst cp units
+        skip_ship: boolean, optional
+        colors: dict, optional
+        **kwargs: passed to legend
         """
         from matplotlib.lines import Line2D
         if labels is None:
             labels = list(self._units)
         if skip_ship:
             labels = [l for l in labels if l!="ship"]
-        custom_lines = [Line2D([0], [0], color=self[label]['color'], lw=4)
-                        for label in labels
-                        ]
+        custom_lines = []
+        for label in labels:
+            if colors and label in colors:
+                c = colors[label]
+            else:
+                c = self[label]['color']
+            custom_lines.append(Line2D([0], [0], color=c, lw=4))
         ax.legend(custom_lines, labels, **kwargs)
 
     def timeline_old(self):
@@ -497,6 +514,8 @@ class campaign(object):
             return D[0]
         else:
             return D
+
+        # !!! code below can probably be deleted
 
         # particular units
         if item=='ship':

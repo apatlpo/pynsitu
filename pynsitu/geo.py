@@ -12,6 +12,7 @@ import pyproj
 crs_wgs84 = pyproj.CRS("EPSG:4326")
 import pyinterp
 #import pyinterp.geohash as geohash
+import geojson
 
 import matplotlib.pyplot as plt
 from  matplotlib.dates import date2num, datetime
@@ -24,6 +25,7 @@ import cartopy.feature as cfeature
 from bokeh.io import output_notebook, show
 from bokeh.layouts import gridplot
 from bokeh.models import ColumnDataSource, HoverTool, CustomJSHover, FuncTickFormatter
+from bokeh.models import CrosshairTool
 from bokeh.plotting import figure
 
 
@@ -217,10 +219,6 @@ _bathy_etopo1 = os.path.join(os.getenv('HOME'),
                         'Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr',
                         )
 
-# med: GEBCO bathymetry
-_med_file = 'gebco_2020_n44.001617431640625_s41.867523193359375_w4.61151123046875_e8.206787109375.nc'
-_bathy_med = os.path.join(os.getenv('HOME'), 'Data/bathy/gebco1', _med_file)
-
 def load_bathy(bathy, bounds=None, steps=None, **kwargs):
     """ Load bathymetry
     """
@@ -230,8 +228,10 @@ def load_bathy(bathy, bounds=None, steps=None, **kwargs):
         ds = ds.rename({'z': 'elevation'})
         if bounds is None and steps is None:
             steps = (4, 4)
-    elif bathy=='med':
-        ds = xr.open_dataset(_bathy_med)
+    else:
+        ds = xr.open_dataset(bathy)
+    assert ("lon" in ds.dims) and ("lat" in ds.dims) and ("elevation" in ds), \
+        f"lon, lat, elevation must be in bathymetric dataset, this not the case in {bathy}"
     if steps is not None:
         ds = ds.isel(lon=slice(0, None, steps[0]),
                      lat=slice(0, None, steps[1]),
@@ -261,6 +261,38 @@ def plot_bathy(fac,
                     )
     if clabel:
         plt.clabel(cs, cs.levels, inline=True, fmt='%.0f', fontsize=9)
+
+def store_bathy_contours(bathy,
+                         contour_file='contours.geojson',
+                         levels=[0, 100, 500, 1000, 2000, 3000],
+                         **kwargs,
+                         ):
+    """ Store bathymetric contours as a geojson
+    The geojson may be used for folium plots
+    """
+
+    # Create contour data lon_range, lat_range, Z
+    depth = load_bathy(bathy, **kwargs)['elevation']
+    if isinstance(levels, tuple):
+        levels = np.arange(*levels)
+    contours = depth.plot.contour(levels=levels, cmap='gray_r')
+
+    # Convert matplotlib contour to geojson
+    from geojsoncontour import contour_to_geojson
+    contours_geojson = contour_to_geojson(
+                            contour=contours,
+                            geojson_filepath=contour_file,
+                            ndigits=3,
+                            unit='m',
+                        )
+
+def load_bathy_contours(contour_file):
+    ''' load bathymetric contours as geojson
+    '''
+    with open(contour_file, 'r') as f:
+        contours = geojson.load(f)
+    return contours
+
 
 # ----------------------------- pandas geo extension --------------------------
 

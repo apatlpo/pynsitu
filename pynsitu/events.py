@@ -4,6 +4,7 @@
 import os
 from glob import glob
 import yaml
+import re
 
 import numpy as np
 import pandas as pd
@@ -168,7 +169,7 @@ class campaign(object):
     ''' Campaign object, gathers deployments information
     '''
 
-    def __init__(self, file):
+    def __init__(self, file, verbose=True):
 
         # open yaml information file
         if ".yaml" not in file:
@@ -214,7 +215,8 @@ class campaign(object):
 
         self._units = {}
         for u, info in cp['units'].items():
-            print(u)
+            if verbose:
+                print(u)
             self._units[u] = objdict(path=self.path, label=u)
             for d, value in info['deployments'].items():
                 self._units[u][d] = deployment(label=d, loglines=value)
@@ -392,12 +394,14 @@ class campaign(object):
                  legend=3,
                  skip_ship=True,
                  start_scale=1,
+                 ax=None,
                  ):
         """ Plot the campaign deployment timeline
         """
 
-        fig = plt.figure(figsize=(15,5))
-        ax=fig.add_subplot(111)
+        if ax is None:
+            fig = plt.figure(figsize=(15,5))
+            ax=fig.add_subplot(111)
 
         y=0
         yticks, yticks_labels = [], []
@@ -510,8 +514,11 @@ class campaign(object):
             if toframe:
                 ds = ds.to_dataframe()
             D[d] = ds
-        if len(D)==1:
-            return D[0]
+        if not D:
+            return None
+        #elif len(D)==1:
+        #    # may want just to return D instead
+        #    return D[list(D.keys())[0]]
         else:
             return D
 
@@ -561,7 +568,9 @@ class campaign(object):
 
     def _get_unit_files(self, unit, extension="nc"):
         """get all processed files associated with one unit"""
-        files = sorted(glob(os.path.join(self.pathp, unit+'*.'+extension)))
+        files = sorted(glob(os.path.join(self.pathp, unit+'*.'+extension)),
+                       key=_extract_last_digit,
+                       )
         # find out whether there are multiple deployments
         if len(files)==1:
             return dict(d0=files[0])
@@ -610,3 +619,8 @@ def _load_processed_file(file, **kwargs):
         return ctd(file=file)
     else:
         return file+" not loaded"
+
+def _extract_last_digit(filename):
+    """extract last digit prior to extension in filename"""
+    last_str = filename.split("_")[-1].split(".")[0]
+    return int(re.search(r'\d+$', last_str).group())

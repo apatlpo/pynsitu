@@ -30,8 +30,12 @@ class PdSeawaterAccessor:
 
     #@staticmethod
     def _validate(self, obj):
-        """verify there are columns for temperature, salinity and pressure
-        Check longitude are
+        """verify there are columns for:
+            - in situ temperature
+            - practical salinity
+            - pressure or depth (computes the missing one)
+            - longitude and latitude
+
         """
         if hasattr(obj, "longitude"):
             self._lon = obj.longitude
@@ -67,32 +71,48 @@ class PdSeawaterAccessor:
             # compute pressure from depth and depth from pressure if need be
             if not p:
                 p = "pressure"
-                obj[p] = gsw.p_from_z(-obj[d], self._lat.median())
+                obj.loc[:,p] = gsw.p_from_z(-obj.loc[:,d], self._lat.median())
             if not d:
-                obj["depth"] = -gsw.z_from_p(obj[p], self._lat.median())
+                obj.loc[:,"depth"] = -gsw.z_from_p(obj.loc[:,p], self._lat.median())
             return t, s, p
 
     def _update_SA_PT(self):
+        """update SA and property, do not overwrite existing values
+        """
         df = self._obj
-        t, s, p = df[self._t], df[self._s], df[self._p]
-        df['SA'] = gsw.SA_from_SP(s, p, self._lon, self._lat)
-        df['CT'] = gsw.CT_from_t(df.SA, t, p)
-        df["sigma0"] = gsw.sigma0(df.SA, df.CT)
+        t, s, p = df.loc[:,self._t], df.loc[:,self._s], df.loc[:,self._p]
+        if "SA" not in df.columns:
+            df.loc[:,'SA'] = gsw.SA_from_SP(s, p, self._lon, self._lat)
+        if "CT" not in df.columns:
+            df.loc[:,'CT'] = gsw.CT_from_t(df.loc[:,"SA"], t, p)
+        if "sigma0" not in df.columns:
+            df.loc[:,"sigma0"] = gsw.sigma0(df.loc[:,"SA"], df.loc[:,"CT"])
 
     def trim(self, d):
         """given a deployment item, trim data"""
         time = self._obj.index
-        df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
+        df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)].copy()
         return df
 
-    def apply_PA_PT(self, fun, *args, **kwargs):
-        """ apply a function that requires working with projected coordinates x/y"""
-        # ensures projection exists
-        #self.project()
+    def apply_with_eos_update(self, fun, *args, **kwargs):
+        """ apply a function and update eos related variables
+        """
         # apply function
         df = fun(self._obj, *args, **kwargs)
-        # update lon/lat
-        #df[self._lon], df[self._lat] = _xy2lonlat(df.x, df.y, self.projection)
+        # update eos related variables
+        df = self.update_eos(df)
+        return df
+
+    def update_eos(self, df=None):
+        """ update eos related variables (e.g. in situ temperature, practical
+        salinity, sigma0) based on SA (absolute salinity) and CT (conservative temperature).
+        """
+        if df is None:
+            df = self._obj.copy()
+        sa, ct, p = df.loc[:,'SA'], df.loc[:,'CT'], df.loc[:,self._p]
+        df.loc[:,self._t] = gsw.t_from_CT(sa, ct, p)
+        df.loc[:,self._s] = gsw.SP_from_SA(sa, p, self._lon, self._lat)
+        df.loc[:,"sigma0"] = gsw.sigma0(sa, ct)
         return df
 
     def resample(self,
@@ -118,7 +138,7 @@ class PdSeawaterAccessor:
         kwargs:
             passed to resample
         '''
-        return self.apply_PA_PT(_resample, rule, op, interpolate, **kwargs)
+        return self.apply_with_eos_update(_resample, rule, op, interpolate, **kwargs)
 
     def compute_vertical_profile(self,
                                  step,
@@ -127,7 +147,7 @@ class PdSeawaterAccessor:
                                  depth_min=0,
                                  depth_max=None,
                                  ):
-        return self.apply_PA_PT(_get_profile,
+        return self.apply_with_eos_update(_get_profile,
                                 depth_min, depth_max, step, speed_threshold,
                                 op,
                                 )
@@ -136,6 +156,7 @@ class PdSeawaterAccessor:
                    unit=None,
                    rule=None,
                    plot_width=400,
+                   cross=False,
         ):
         """ bokeh plot
 
@@ -168,7 +189,6 @@ class PdSeawaterAccessor:
                            y=[y.min(), y.max()],
                            color='salmon', line_width=2)
 
-
         def add_box(label, column, y_reverse=False, **kwargs):
             # create a new plot and add a renderer
             s = figure(tools=TOOLS,
@@ -179,6 +199,8 @@ class PdSeawaterAccessor:
                        **kwargs,
                        )
             s.line('time', column, source=df, line_width=lw, color=c)
+            if cross:
+                s.cross('time', column, source=df, color="orange", size=10)
             s.add_tools(HoverTool(
                 tooltips=[('Time','@time{%F %T}'),
                           (label, '@{'+column+'}{0.0000f}'),
@@ -219,26 +241,29 @@ def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
     assert "depth" in df, "depth must be a column to produce a vertical profile"
     # make a copy and get rid of duplicates
     df = df[~df.index.duplicated(keep='first')]
+    if "time" not in df.columns:
+        # assumes time is the index
+        df = df.reset_index()
     if speed_threshold:
-        if "time" not in df.colums:
-            # assumes time is the index
-            dt = pd.Series(df.index).diff()/pd.Timedelta("1s")
-            dt.index = df.index
-            df["dt"] = dt
-        else:
-            df["dt"] = df["time"].diff()/pd.Timedelta("1s")
-        dzdt = np.abs(df["depth"])
+        #    dt = pd.Series(df.index).diff()/pd.Timedelta("1s")
+        #    dt.index = df.index
+        #    df.loc[:,"dt"] = dt
+        #else:
+        df.loc[:,"dt"] = df.loc[:,"time"].diff()/pd.Timedelta("1s")
+        dzdt = np.abs(df.loc[:,"depth"])
         df = df.loc[dzdt<speed_threshold]
     if depth_max is None:
-        depth_max = float(df["depth"].max())
+        depth_max = float(df.loc[:,"depth"].max())
     bins = np.arange(depth_min, depth_max, step)
-    df["depth_cut"] = pd.cut(df.depth, bins)
+    df.loc[:,"depth_cut"] = pd.cut(df.loc[:,"depth"], bins)
     if op=="mean":
-        df = df.groupby(df.depth_cut).mean().drop(columns=["depth"])
-    print()
-    df["depth"] = df.index.map(lambda bin: bin.mid).astype(float)
-    df["z"] = -df["depth"]
-    return df.set_index("z")
+        df = (df.groupby(df.loc[:,"depth_cut"])
+              .mean(numeric_only=False)
+              .drop(columns=["depth"])
+              )
+    df.loc[:,"depth"] = df.index.map(lambda bin: bin.mid).astype(float)
+    df.loc[:,"z"] = -df.loc[:,"depth"]
+    return df.set_index("z").bfill()
 
 # ----------------------------- xarray accessor --------------------------------
 
@@ -295,7 +320,7 @@ class XrSeawaterAccessor:
         return self._obj["sigma0"]
 
 
-def plot_ts(s_lim, t_lim):
+def plot_ts(s_lim, t_lim, figsize=None):
     """plot T/S diagram
 
     Parameters
@@ -316,7 +341,7 @@ def plot_ts(s_lim, t_lim):
     ds["longitude"] = 0.
     ds["latitude"] = 49.
 
-    fig, ax = plt.subplots(1,1)
+    fig, ax = plt.subplots(1,1, figsize=figsize)
     cs = ds.sw.sigma0.plot.contour(x="salinity", ax=ax, colors="k")
     ax.clabel(cs, inline=1, fontsize=10)
     ax.grid()

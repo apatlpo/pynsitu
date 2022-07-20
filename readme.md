@@ -10,3 +10,9 @@ lon/lat/depth
 geodetic properties
 
 water properties
+
+
+Requires:
+
+- cartopy, bokeh
+- pytide, pyTMD

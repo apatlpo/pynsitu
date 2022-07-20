@@ -296,9 +296,10 @@ def load_bathy_contours(contour_file):
 
 # ----------------------------- pandas geo extension --------------------------
 
-def _xy2lonlat(x, y, proj):
+def _xy2lonlat(x, y, proj=None):
     """ compute longitude/latitude from projected coordinates """
     _inv_dir = pyproj.enums.TransformDirection.INVERSE
+    assert proj is not None, "proj must not be None"
     return proj.transform(x, y, direction=_inv_dir)
 
 @pd.api.extensions.register_dataframe_accessor("geo")
@@ -338,7 +339,7 @@ class GeoAccessor:
         if self._geo_proj_ref is None:
             # return the geographic center point of this DataFrame
             lat, lon = self._obj[self._lat], self._obj[self._lon]
-            self._geo_proj_ref = (float(lon.mean()), float(lat.mean()))
+            self._geo_proj_ref = (float(lon.iloc[0]), float(lat.iloc[0]))
         return self._geo_proj_ref
 
     def set_projection_reference(self, ref, reset=True):
@@ -351,21 +352,26 @@ class GeoAccessor:
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self.projection_reference
-            self._geo_proj = pyproj.Proj(proj="aeqd", lat_0=latc, lon_0=lonc,
+            self._geo_proj = pyproj.Proj(proj="aeqd",
+                                         lat_0=latc, lon_0=lonc,
                                          datum="WGS84", units="m")
         return self._geo_proj
 
-    def project(self, overwrite=False):
+    def project(self, overwrite=True):
         """add (x,y) projection to object"""
         d = self._obj
         if "x" not in d.columns or "y" not in d.columns or overwrite:
-            d["x"], d["y"] = self.projection.transform(d[self._lon], d[self._lat])
+            d.loc[:,"x"], d.loc[:,"y"] = self.projection.transform(d.loc[:,self._lon],
+                                                                   d.loc[:,self._lat],
+                                                                   )
 
     def compute_lonlat(self):
         """update longitude and latitude from projected coordinates """
         d = self._obj
         assert ("x" in d.columns) and ("y" in d.columns), "x/y coordinates must be available"
-        d[self._lon], d[self._lat] = _xy2lonlat(d.x, d.y, self.projection)
+        d.loc[:,self._lon], d.loc[:,self._lat] = _xy2lonlat(d.x, d.y, self.projection)
+
+    # time series and/or campaign related material
 
     def trim(self, d):
         """given a deployment item, trim data"""
@@ -373,14 +379,16 @@ class GeoAccessor:
         df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
         return df
 
-    def apply_xy(self, fun):
+    def apply_xy(self, fun, **kwargs):
         """ apply a function that requires working with projected coordinates x/y"""
         # ensures projection exists
         self.project()
         # apply function
-        df = fun(self._obj)
+        df = fun(self._obj, **kwargs)
         # update lon/lat
-        df[self._lon], df[self._lat] = _xy2lonlat(df.x, df.y, self.projection)
+        df.loc[:,self._lon], df.loc[:,self._lat] = _xy2lonlat(df.loc[:,"x"],
+                                                              df.loc[:,"y"],
+                                                              self.projection)
         return df
 
     def resample(self,
@@ -412,22 +420,85 @@ class GeoAccessor:
             return df
         return self.apply_xy(_resample)
 
-    def compute_velocities(self, time="index"):
+    def compute_velocities(self, time="index",
+                           centered=False,
+                           keep_dt=False,
+                           acceleration=False,
+                           ):
         """ compute velocity """
         def _compute_velocities(df):
-            df = df[~df.index.duplicated(keep='first')]
+            # drop duplicates
+            df = df[~df.index.duplicated(keep='first')].copy()
             if time=="index":
                 dt = pd.Series(df.index).diff()/pd.Timedelta("1s")
                 dt.index = df.index
-                df["dt"] = dt
+                df.loc[:,"dt"] = dt
             else:
-                df["dt"] = df[time].diff()/pd.Timedelta("1s")
-            df["u"] = df.x.diff()/df.dt
-            df["v"] = df.y.diff()/df.dt
-            df["velocity"] = np.sqrt(df.u**2+df.v**2)
-            df = df.drop(columns=["dt"])
+                df.loc[:,"dt"] = df.loc[:,time].diff()/pd.Timedelta("1s")
+            dx = df.loc[:,"x"].diff()/df.dt
+            dy = df.loc[:,"y"].diff()/df.dt
+            if centered:
+                # to do, not so easy when time sampling is not regular
+                pass
+            else:
+                df.loc[:,"ux"] = dx
+                df.loc[:,"uy"] = dy
+            df.loc[:,"velocity"] = np.sqrt(df.loc[:,"ux"]**2+df.loc[:,"uy"]**2)
+            if acceleration:
+                dt_acc = (dt.shift(-1)+dt)*0.5
+                df.loc[:,"acc_x"] = (df["ux"].shift(-1)-df["ux"])/dt_acc
+                df.loc[:,"acc_y"] = (df["uy"].shift(-1)-df["uy"])/dt_acc
+                df.loc[:,"acc"] = np.sqrt(df["acc_x"]**2+df["acc_y"]**2)
+            if not keep_dt:
+                df = df.drop(columns=["dt"])
             return df
         return self.apply_xy(_compute_velocities)
+
+    # --- transect
+    def compute_transect(self, ds, vmin=None, dt_max=None):
+        """ Average data along a transect of step ds
+
+        Parameters
+        ----------
+        ds: float
+            transect spacing in meters
+        vmin: float, optional
+            ship minimum speed, used to compute a maximum search time for each
+            transect cell
+        dt_max: pd.Timedelta, optional
+            maximum search time for each transect cell
+        """
+
+        # compute velocities, thereby ensures projection exists
+        df = self.compute_velocities()
+
+        # init transect time and position
+        t = df.index[0]
+        x = df.x[0]
+        y = df.y[0]
+
+        if vmin is not None:
+            dt_max = pd.Timedelta(ds/vmin, unit="seconds")
+
+        T, D = [], []
+        while t:
+            t, x, y, d  = _step_trajectory(df, t, x, y, ds, dt_max)
+            if t:
+                T.append(t)
+                D.append(d)
+
+        df = pd.concat(D, axis=1).T
+        df.loc[:, "time"] = T
+
+        # compute and add along-transect coordinate
+        dx = df.x.diff().fillna(0)
+        dy = df.y.diff().fillna(0)
+        s = np.sqrt(dx**2+dy**2).cumsum()
+        df.loc[:, "s"] = s
+
+        return df.set_index("s")
+
+    # ---- plotting
 
     def plot_lonlat(self):
         """ simple lon/lat plot """
@@ -587,3 +658,112 @@ class GeoAccessor:
 
         p = gridplot([[s1,]])
         show(p)
+
+
+def _step_trajectory(df, t, x, y, ds, dt_max):
+    """ compute next position along transect
+    """
+
+    # select temporally
+    df = df.loc[ (df.index>t) ].copy()
+    if dt_max:
+        df = df.loc[ (df.index<t+dt_max) ]
+
+    # select spatially
+    df.loc[:,"s"] = np.sqrt( (df.loc[:,"x"]-x)**2 + (df.loc[:,"y"]-y)**2 )
+    df = df.loc[ (df.loc[:,"s"] > ds/2) & (df.loc[:,"s"] < 1.5*ds) ]
+
+    if df.empty:
+        return None, None, None, None
+
+    t = df.reset_index().loc[:,"time"].mean()
+    dfm =  df.mean()
+    x, y = dfm["x"], dfm["y"]
+
+    return t, x, y, dfm
+
+# ----------------------------- xarray accessor --------------------------------
+
+@xr.register_dataset_accessor("geo")
+class XrGeoAccessor:
+    def __init__(self, xarray_obj):
+        self._lon, self._lat = self._validate(xarray_obj)
+        self._obj = xarray_obj
+        self._reset_geo()
+
+    #@staticmethod
+    def _validate(self, obj):
+        """verify there are latitude and longitude variables"""
+        lon, lat = None, None
+        lat_potential = ["lat", "latitude"]
+        lon_potential = ["lon", "longitude"]
+        for c in list(obj.variables):
+            if c.lower() in lat_potential:
+                lat = c
+            elif c.lower() in lon_potential:
+                lon = c
+        if not lat or not lon:
+            raise AttributeError("Did not find latitude and longitude variables. Case insentive options are: "
+                                 + "/".join(lat_potential) + " , " + "/".join(lon_potential)
+                                )
+        else:
+            return lon, lat
+
+    def _reset_geo(self):
+        """reset all variables related to geo"""
+        self._geo_proj_ref=None
+        self._geo_proj=None
+
+    def set_projection_reference(self, ref, reset=True):
+        """ set projection reference point, (lon, lat) tuple"""
+        if reset:
+            self._reset_geo()
+        self._geo_proj_ref = ref
+
+    @property
+    def projection(self):
+        if self._geo_proj is None:
+            lonc, latc = self._geo_proj_ref
+            self._geo_proj = pyproj.Proj(proj="aeqd",
+                                         lat_0=latc, lon_0=lonc,
+                                         datum="WGS84", units="m",
+                                         )
+        return self._geo_proj
+
+    def project(self, overwrite=True, **kwargs):
+        """add (x,y) projection to object"""
+        d = self._obj
+        dkwargs = dict(vectorize=True)
+        dkwargs.update(**kwargs)
+        if "x" not in d.variables or "y" not in d.variables or overwrite:
+            proj = self.projection.transform
+            if True:
+                _x, _y = proj(d[self._lon], d[self._lat],)
+                dims = d[self._lon].dims
+                d["x"], d["y"] = (dims, _x), (dims, _y)
+            else:
+                d["x"], d["y"] = xr.apply_ufunc(self.projection.transform,
+                                            d[self._lon],
+                                            d[self._lat],
+                                            **dkwargs)
+
+    def compute_lonlat(self, x=None, y=None, **kwargs):
+        """update longitude and latitude from projected coordinates """
+        d = self._obj
+        assert ("x" in d.variables) and ("y" in d.variables), "x/y coordinates must be available"
+        dkwargs = dict()
+        dkwargs.update(**kwargs)
+        if x is not None and y is not None:
+            lon, lat = _xy2lonlat(x, y, proj=self.projection)
+            return (x.dims, lon), (x.dims, lat)
+        else:
+            d[self._lon], d[self._lat] = \
+                xr.apply_ufunc(_xy2lonlat,
+                               d["x"], d["y"],
+                               kwargs=dict(proj=self.projection),
+                               **dkwargs,
+                               )
+
+    # time series related code
+
+    # speed ...

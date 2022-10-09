@@ -33,6 +33,7 @@ from bokeh.plotting import figure
 
 g = 9.81
 deg2rad = np.pi / 180.0
+rad2deg = 180.0 / np.pi
 deg2m = 111319
 earth_radius = 6378.0
 
@@ -52,6 +53,27 @@ def dfdy(lat, units="1/s/m"):
         df = df * 86400 / 2.0 / np.pi * 100 * 1e3
     return df
 
+# ----------------------------- projections  -----------------------------------
+
+class projection(object):
+    """ wrapper around pyproj to easily convert to local cartesian coordinates
+    """
+
+    def __init__(self, lon_ref, lat_ref):
+        self.proj = pyproj.Proj(proj="aeqd",
+                                lat_0=lat_ref, lon_0=lon_ref,
+                                datum="WGS84",
+                                units="m",
+                                )
+
+    def lonlat2xy(self, lon, lat):
+        """transforms lon, lat to x,y coordinates"""
+        return self.proj.transform(lon, lat)
+
+    def xy2lonlat(self, x, y):
+        """transforms x,y to lon, lat coordinates"""
+        _inv_dir = pyproj.enums.TransformDirection.INVERSE
+        return self.proj.transform(x, y, direction=_inv_dir)
 
 # ----------------------------- formatters  -----------------------------------
 
@@ -211,6 +233,9 @@ def plot_map(fig=None,
         shp = shapereader.Reader(_coast_root+'baie_de_seine/bseine_water.shp')
         for record, geometry in zip(shp.records(), shp.geometries()):
             ax.add_geometries([geometry], crs, facecolor='blue', edgecolor='none')
+
+    # need to perform once more
+    ax.set_extent(bounds, crs=crs)
 
     return [fig, ax, crs]
 

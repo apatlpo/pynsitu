@@ -209,7 +209,10 @@ class campaign(object):
 
         # path to processed data
         if 'pathp' in cp:
-            self.pathp = cp['pathp']
+            if cp['pathp'][0]=="/":
+                self.pathp = cp['pathp']
+            else:
+                self.pathp = os.path.join(self.path, cp['pathp'])
         else:
             self.pathp = os.path.join(self.path, 'datap')
 
@@ -437,6 +440,8 @@ class campaign(object):
         delta_time = max(ends) - min(starts)
         plt.xlim([min(starts)-delta_time*.05*start_scale, max(ends)+delta_time*.05])
         plt.ylim([y+1-2*height,2*height])
+        print(y, y+1-2*height)
+        return ax
 
     def add_legend(self, ax,
                    labels=None,

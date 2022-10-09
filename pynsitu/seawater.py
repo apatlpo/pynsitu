@@ -37,18 +37,19 @@ class PdSeawaterAccessor:
             - longitude and latitude
 
         """
-        if hasattr(obj, "longitude"):
-            self._lon = obj.longitude
-        else:
+        for k in dir(obj):
+            if k.lower() in ["longitude", "long", "lon"]:
+                self._lon = getattr(obj, k)
+            if k.lower() in ["latitude", "lat"]:
+                self._lat = getattr(obj, k)
+        if not hasattr(self, "_lon"):
             raise AttributeError("Did not find an attribute longitude")
-        if hasattr(obj, "latitude"):
-            self._lat = obj.latitude
-        else:
+        if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
 
         t, s, p = None, None, None
         t_potential = ["temperature", "temp", "t"]
-        s_potential = ["salinity", "s"]
+        s_potential = ["salinity", "psal", "s"]
         p_potential = ["pressure", "p"]
         d_potential = ["depth",]
         for c in list(obj.columns):
@@ -270,27 +271,32 @@ def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
 @xr.register_dataset_accessor("sw")
 class XrSeawaterAccessor:
     def __init__(self, xarray_obj):
-        self._t, self._s, self._p = self._validate(xarray_obj)
+        self._t, self._s, self._p, self._d = self._validate(xarray_obj)
         self._obj = xarray_obj
-        self._update_SA_PT()
+        self._vdim = None
+        self.update_SA_PT()
+        self.update_eos() # kind of circular but adds sigma0
 
     def _validate(self, obj):
         """verify there are columns for temperature, salinity and pressure
         Check longitude are
         """
-        if hasattr(obj, "longitude"):
-            self._lon = obj.longitude
-        else:
+        #if hasattr(obj, "longitude"):
+        for k in dir(obj):
+            if k.lower() in ["longitude", "long", "lon"]:
+                self._lon = getattr(obj, k)
+            if k.lower() in ["latitude", "lat"]:
+                self._lat = getattr(obj, k)
+        if not hasattr(self, "_lon"):
             raise AttributeError("Did not find an attribute longitude")
-        if hasattr(obj, "latitude"):
-            self._lat = obj.latitude
-        else:
+        if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
 
-        t, s, p = None, None, None
+        t, s, p, d = None, None, None, None
         t_potential = ["temperature", "temp", "t"]
-        s_potential = ["salinity", "s"]
-        p_potential = ["pressure", "p"]
+        s_potential = ["salinity", "psal", "s"]
+        p_potential = ["pressure", "press", "p"]
+        d_potential = ["depth",]
         for c in list(obj.variables):
             if c.lower() in t_potential:
                 t = c
@@ -298,26 +304,118 @@ class XrSeawaterAccessor:
                 s = c
             elif c.lower() in p_potential:
                 p = c
-        if not t or not s or not p:
-            raise AttributeError("Did not find temperature, salinity and pressure columns. "
+            elif c.lower() in d_potential:
+                d = c
+        if not t or not s or (not p and not d):
+            raise AttributeError("Did not find temperature, salinity and pressure (or depth) columns. "
                                  +"Case insentive options are: "
                                  + "/".join(t_potential)
                                  + " , " + "/".join(s_potential)
                                  + " , " + "/".join(p_potential)
+                                 + " , " + "/".join(p_potential)
+                                 + " , " + "/".join(d_potential)
                                 )
         else:
-            return t, s, p
+            # compute pressure from depth and depth from pressure if need be
+            if not p:
+                p = "pressure"
+                obj[p] = gsw.p_from_z(-obj[d], self._lat)
+            if not d:
+                obj["depth"] = -gsw.z_from_p(obj[p], self._lat)
+            return t, s, p, d
 
-    def _update_SA_PT(self):
+    def init(self):
+        """ automatically generates relevant variables"""
+
+
+    def set_vdim(self, vdim):
+        """ let the user specify which dimension is the depth dimension """
+        self._vdim = vdim
+        #self._odims = [d for d in self._obj[self._t].dims if d!=vdim]
+
+    def update_SA_PT(self):
         ds = self._obj
         t, s, p = ds[self._t], ds[self._s], ds[self._p]
         ds['SA'] = gsw.SA_from_SP(s, p, self._lon, self._lat)
         ds['CT'] = gsw.CT_from_t(ds.SA, t, p)
-        ds["sigma0"] = gsw.sigma0(ds.SA, ds.CT)
+        #return ds
+
+    def update_eos(self, ds=None, overwrite=True):
+        if ds is None:
+            ds = self._obj #.copy()
+        sa, ct, p = ds['SA'], ds['CT'], ds[self._p]
+        if self._t not in ds or overwrite:
+            ds[self._t] = gsw.t_from_CT(sa, ct, p)
+        if self._s not in ds or overwrite:
+            ds[self._s] = gsw.SP_from_SA(sa, p, self._lon, self._lat)
+        if "sigma0" not in ds or overwrite:
+            ds["sigma0"] = gsw.sigma0(sa, ct)
+        return ds
+
+    def apply_with_eos_update(self, fun, *args, **kwargs):
+        """ apply a function and update eos related variables
+        """
+        # apply function
+        ds = fun(self._obj, *args, **kwargs)
+        # update eos related variables
+        ds.sw.init()
+        ds = self.update_eos(ds)
+        return ds
+
+    def resample(self,
+                 dz,
+                 depth_max=None,
+        ):
+        ''' resample along depth coordinate
+
+        Parameters
+        ----------
+        interpolate: boolean, optional
+            turn on interpolation for upsampling
+        kwargs:
+            passed to resample
+        '''
+        assert hasattr(self, "_vdim"), \
+            "you need to run set_vdim first to specify the vertical dimension"
+        ds = self._obj
+        if not depth_max:
+            depth_max = float(self._obj[self._d].max())
+        depth_bins = np.arange(0, depth_max, dz)
+        depth = (depth_bins[:-1] + depth_bins[1:])*0.5
+        def _resample(ds, *args, **kwargs):
+            dsr = (ds
+                   .groupby_bins(self._vdim, depth_bins, labels=depth)
+                   .mean(dim=self._vdim)
+                   .rename(**{self._vdim+"_bins": self._vdim})
+                   )
+            return dsr
+        return self.apply_with_eos_update(_resample)
 
     @property
     def sigma0(self):
-        return self._obj["sigma0"]
+        ds = self._obj
+        if "sigma0" not in ds:
+            sigma0 = gsw.sigma0(ds.SA, ds.CT)
+        return sigma0
+
+    @property
+    def N2(self):
+        """ compute buoyancy frequency """
+        assert hasattr(self, "_vdim"), \
+            "you need to run set_vdim first to specify the vertical dimension"
+        #
+        ds = self._obj
+        ds = ds.transpose(..., self._vdim)
+        t, s, p = ds[self._t], ds[self._s], ds[self._p]
+        assert p.ndim==1, "pressure must be 1D at the moment"
+        N2, p_mid = gsw.Nsquared(ds.SA, ds.CT, p, lat=self._lat, axis=0)
+        #dp = (ds.DEPTH.isel(**{vdim: 1}) - ds.DEPTH.isel(**{vdim: 0}))
+        #sign_dp = int(np.sign(dp).median().values)
+        ds["depth_mid"] = (("depth_mid"), p_mid)
+        #ds = ds.assign_coords(z_mid=-ds.DEPTH_MID)
+        ds["N2"] = (("depth_mid"), N2)
+        return ds.N2
+
 
 
 def plot_ts(s_lim, t_lim, figsize=None):

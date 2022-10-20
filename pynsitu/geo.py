@@ -377,16 +377,17 @@ class GeoAccessor:
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self.projection_reference
-            self._geo_proj = pyproj.Proj(proj="aeqd",
-                                         lat_0=latc, lon_0=lonc,
-                                         datum="WGS84", units="m")
+            self._geo_proj = projection(lonc, latc)
+            #self._geo_proj = pyproj.Proj(proj="aeqd",
+            #                             lat_0=latc, lon_0=lonc,
+            #                             datum="WGS84", units="m")
         return self._geo_proj
 
     def project(self, overwrite=True):
         """add (x,y) projection to object"""
         d = self._obj
         if "x" not in d.columns or "y" not in d.columns or overwrite:
-            d.loc[:,"x"], d.loc[:,"y"] = self.projection.transform(d.loc[:,self._lon],
+            d.loc[:,"x"], d.loc[:,"y"] = self.projection.lonlat2xy(d.loc[:,self._lon],
                                                                    d.loc[:,self._lat],
                                                                    )
 
@@ -394,7 +395,7 @@ class GeoAccessor:
         """update longitude and latitude from projected coordinates """
         d = self._obj
         assert ("x" in d.columns) and ("y" in d.columns), "x/y coordinates must be available"
-        d.loc[:,self._lon], d.loc[:,self._lat] = _xy2lonlat(d.x, d.y, self.projection)
+        d.loc[:,self._lon], d.loc[:,self._lat] = self.projection.xy2lonlat(d["x"], d["y"])
 
     # time series and/or campaign related material
 
@@ -411,9 +412,8 @@ class GeoAccessor:
         # apply function
         df = fun(self._obj, **kwargs)
         # update lon/lat
-        df.loc[:,self._lon], df.loc[:,self._lat] = _xy2lonlat(df.loc[:,"x"],
-                                                              df.loc[:,"y"],
-                                                              self.projection)
+        df.loc[:,self._lon], df.loc[:,self._lat] = \
+                self.projection.xy2lonlat(d["x"], d["y"])
         return df
 
     def resample(self,

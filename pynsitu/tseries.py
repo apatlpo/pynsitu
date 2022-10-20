@@ -361,3 +361,63 @@ class XrTimeSeriesAccessor:
     # time series related code
 
     # speed ...
+
+#-------------------------- spectral analysis ----------------------------------
+
+def get_spectrum(v, N, dt=None, method="welch", detrend=False, **kwargs):
+    """Compute a lagged correlation between two time series
+    These time series are assumed to be regularly sampled in time
+    and along the same time line.
+    Parameters
+    ----------
+        v: ndarray, pd.Series
+            Time series, the index must be time if dt is not provided
+        N: int
+            Length of the output
+        dt: float, optional
+            Time step
+        method: string
+            Method that will be employed for spectral calculations.
+            Default is 'welch'
+        detrend: str or function or False, optional
+            Turns detrending on or off. Default is False.
+    See:
+        - https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.signal.periodogram.html
+        - https://krischer.github.io/mtspec/
+        - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
+    """
+    if v is None:
+        _v = np.random.randn(N)
+    else:
+        _v = v.iloc[:N]
+    if dt is None:
+        dt = _v.reset_index()["index"].diff().mean()
+
+    if detrend and not method == "welch":
+        print("!!! Not implemented yet except for welch")
+    if method == "welch":
+        from scipy import signal
+
+        dkwargs = {
+            "window": "hann",
+            "return_onesided": False,
+            "detrend": detrend,
+            "scaling": "density",
+        }
+        dkwargs.update(kwargs)
+        f, E = signal.periodogram(_v, fs=1 / dt, axis=0, **dkwargs)
+    elif method == "mtspec":
+        from mtspec import mtspec
+
+        lE, f = mtspec(
+            data=_v, delta=dt, time_bandwidth=4.0, number_of_tapers=6, quadratic=True
+        )
+    elif method == "mt":
+        import nitime.algorithms as tsa
+
+        dkwargs = {"NW": 2, "sides": "twosided", "adaptive": False, "jackknife": False}
+        dkwargs.update(kwargs)
+        lf, E, nu = tsa.multi_taper_psd(_v, Fs=1 / dt, **dkwargs)
+        f = fftfreq(len(lf)) * 24.0
+        # print('Number of tapers = %d' %(nu[0]/2))
+    return pd.Series(E, index=f)

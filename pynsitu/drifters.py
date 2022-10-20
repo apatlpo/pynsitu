@@ -1,6 +1,5 @@
 
-
-
+from .geo import GeoAccessor
 
 def time_window_processing(
     df,
@@ -59,9 +58,13 @@ def time_window_processing(
     else:
         assert False, "Cannot find float id"
     #
-    dim_x, dim_y, geo = guess_spatial_dims(df)
+    #dim_x, dim_y, geo = guess_spatial_dims(df)
     if geo:
-        df = compute_vector(df, lon_key=dim_x, lat_key=dim_y)
+        # old, used to go through 3 vectors
+        #df = compute_vector(df, lon_key=dim_x, lat_key=dim_y)
+        # new, leverage GeoAccessor
+        df.geo.project()
+        proj = df.geo._geo_proj
     #
     # drop duplicated values
     df = df.drop_duplicates(subset="date")
@@ -81,11 +84,14 @@ def time_window_processing(
             # by default converts to days then
             dt = pd.Timedelta(dt) / pd.Timedelta("1D")
         if geo:
-            df = compute_lonlat(
-                df,
-                lon_key=dim_x,
-                lat_key=dim_y,
-            )
+            # old
+            #df = compute_lonlat(
+            #    df,
+            #    lon_key=dim_x,
+            #    lat_key=dim_y,
+            #)
+            # new
+            df.compute_lonlat()
     #
     df = df.set_index("time")
     tmin, tmax = df.index[0], df.index[-1]
@@ -106,7 +112,8 @@ def time_window_processing(
             # iloc because pandas include the last date
             _df = _df.iloc[:-1, :]
         # compute average position
-        x, y = mean_position(_df, Lx=Lx)
+        #x, y = mean_position(_df, Lx=Lx)
+        x, y = proj.xy2lonlat(_df["x"].mean(), _df["y"].mean())
         # apply myfun
         myfun_out = myfun(*[_df[c] for c in columns], N, dt, **myfun_kwargs)
         # combine with mean position and time
@@ -115,6 +122,7 @@ def time_window_processing(
         t += T * (1 - overlap)
     return out
 
+# should be updated
 def mean_position(df, Lx=None):
     """Compute the mean position of a dataframe
 

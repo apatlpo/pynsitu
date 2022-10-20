@@ -1,5 +1,9 @@
 
+import pandas as pd
+
 from .geo import GeoAccessor
+
+
 
 def time_window_processing(
     df,
@@ -12,6 +16,7 @@ def time_window_processing(
     overlap=0.5,
     id_label="id",
     dt=None,
+    geo=None,
     **myfun_kwargs,
 ):
     """Break each drifter time series into time windows and process each windows
@@ -59,19 +64,19 @@ def time_window_processing(
         assert False, "Cannot find float id"
     #
     #dim_x, dim_y, geo = guess_spatial_dims(df)
-    if geo:
+    if geo is not None:
         # old, used to go through 3 vectors
         #df = compute_vector(df, lon_key=dim_x, lat_key=dim_y)
         # new, leverage GeoAccessor
         df.geo.project()
-        proj = df.geo._geo_proj
+        proj = df.geo.projection
     #
     # drop duplicated values
     df = df.drop_duplicates(subset="date")
     # p = p.where(p.time.diff() != 0).dropna() # duplicates - old
     #
     df = df.sort_values("time")
-    #
+    # temporal resampling to fill gaps
     if dt is not None:
         if isinstance(dt, float):
             # enforce regular sampling
@@ -80,10 +85,11 @@ def time_window_processing(
             regular_time = np.arange(tmin, tmax, dt)
             df = df.reindex(regular_time).interpolate()
         elif isinstance(dt, str):
-            df = df.set_index("date").resample(dt).pad().reset_index()
+            #df = df.set_index("date").resample(dt).pad().reset_index()
+            df = df.set_index("date").resample(dt).interpolate().reset_index()
             # by default converts to days then
             dt = pd.Timedelta(dt) / pd.Timedelta("1D")
-        if geo:
+        if geo is not None:
             # old
             #df = compute_lonlat(
             #    df,
@@ -91,7 +97,7 @@ def time_window_processing(
             #    lat_key=dim_y,
             #)
             # new
-            df.compute_lonlat()
+            df.geo.compute_lonlat()
     #
     df = df.set_index("time")
     tmin, tmax = df.index[0], df.index[-1]
@@ -102,7 +108,7 @@ def time_window_processing(
     myfun_out = myfun(*[None for c in columns], N, dt, **myfun_kwargs)
     size_out = myfun_out.index.size
     #
-    columns_out = [dim_x, dim_y] + ["id"] + list(myfun_out.index)
+    columns_out = ["x", "y"] + ["id"] + list(myfun_out.index)
     out = pd.DataFrame({c: [] for c in columns_out})
     t = tmin
     while t + T < tmax:

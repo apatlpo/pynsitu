@@ -364,7 +364,7 @@ class XrTimeSeriesAccessor:
 
 #-------------------------- spectral analysis ----------------------------------
 
-def get_spectrum(v, N, dt=None, method="welch", detrend=False, **kwargs):
+def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
     """Compute a lagged correlation between two time series
     These time series are assumed to be regularly sampled in time
     and along the same time line.
@@ -378,7 +378,7 @@ def get_spectrum(v, N, dt=None, method="welch", detrend=False, **kwargs):
             Time step
         method: string
             Method that will be employed for spectral calculations.
-            Default is 'welch'
+            Default is 'periodogram'
         detrend: str or function or False, optional
             Turns detrending on or off. Default is False.
     See:
@@ -393,9 +393,9 @@ def get_spectrum(v, N, dt=None, method="welch", detrend=False, **kwargs):
     if dt is None:
         dt = _v.reset_index()["index"].diff().mean()
 
-    if detrend and not method == "welch":
-        print("!!! Not implemented yet except for welch")
-    if method == "welch":
+    if detrend and not method == "periodogram":
+        print("!!! Not implemented yet except for periodogram")
+    if method == "periodogram":
         from scipy import signal
 
         dkwargs = {

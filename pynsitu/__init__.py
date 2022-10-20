@@ -1,6 +1,7 @@
 #
 __all__ = ["events",
            "campaign",
+           "drifters",
            "geo",
            "maps",
            "seawater",
@@ -16,6 +17,7 @@ nautical_mile = 1852 # meters
 
 from . import events
 from .events import campaign
+from . import drifters
 from . import geo
 from . import maps
 from . import seawater

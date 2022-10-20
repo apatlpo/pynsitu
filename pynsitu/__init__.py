@@ -10,6 +10,9 @@ __all__ = ["events",
 
 # various parameters
 from .geo import deg2rad, rad2deg, g, deg2m
+knot = 0.514
+nautical_mile = 1852 # meters
+
 
 from . import events
 from .events import campaign

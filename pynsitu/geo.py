@@ -79,11 +79,11 @@ class projection(object):
 
 
 def dec2degmin(dec):
-    # return coordinates with seconds
+    """ decimal degrees to degrees and minutes"""
     sign = np.sign(dec)
-    deg = np.trunc(abs(dec))
-    sec = (abs(dec) - deg) * 60.
-    return [int(sign*deg), sec]
+    adeg = int(abs(dec))
+    min = (abs(dec) - adeg) * 60.
+    return [int(sign*adeg), min]
 
 def degmin2dec(deg, min):
     """ converts lon or lat in deg, min to decimal

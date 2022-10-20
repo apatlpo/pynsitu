@@ -16,7 +16,7 @@ import pyTMD
 
 deg2rad = np.pi / 180.0
 
-constituents = ['2n2','eps2','j1','k1','k2','l2','lambda2','m2','m3','m4','m6',
+tidal_constituents = ['2n2','eps2','j1','k1','k2','l2','lambda2','m2','m3','m4','m6',
             'm8','mf','mks2','mm','mn4','ms4','msf','msqm','mtm','mu2','n2',
             'n4','nu2','o1','p1','q1','r2','s1','s2','s4','sa','ssa','t2']
 
@@ -265,7 +265,7 @@ def load_equilibrium_constituents(c=None):
     species: spherical harmonic dependence of quadrupole potential
     """
     if c is None:
-        c = constituents
+        c = tidal_constituents
     if isinstance(c, list):
         df = (pd.DataFrame({_c: load_equilibrium_constituents(_c) for _c in c}).T)
         df = df.sort_values("omega")

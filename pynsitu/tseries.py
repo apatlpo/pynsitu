@@ -15,11 +15,6 @@ import pyTMD
 # ------------------------------ parameters ------------------------------------
 
 deg2rad = np.pi / 180.0
-
-tidal_constituents = ['2n2','eps2','j1','k1','k2','l2','lambda2','m2','m3','m4','m6',
-            'm8','mf','mks2','mm','mn4','ms4','msf','msqm','mtm','mu2','n2',
-            'n4','nu2','o1','p1','q1','r2','s1','s2','s4','sa','ssa','t2']
-
 cpd = 86400/2/np.pi
 
 # ----------------------------- pandas tseries extension -----------------------
@@ -48,7 +43,9 @@ class TimeSeriesAccessor:
         else:
             self._time_index = False
         if not time:
-            raise AttributeError("Did not find time column. Case insentive options are: "
+            raise AttributeError("Did not find time column."
+                                 +" You need to rename the relevant column. \n"
+                                 +"Case insentive options are: "
                                  + "/".join(time_potential)
                                 )
         else:
@@ -101,6 +98,7 @@ class TimeSeriesAccessor:
 
     def _check_uniform_timeline(self):
         dt = self.time.diff()/pd.Timedelta(self.delta_time_reference)
+        # could use .unique instead
         dt_min = dt.min()
         dt_max = dt.max()
         #print(f" min(dt)= {dt_min} max(dt)= {dt_max} ")
@@ -183,104 +181,12 @@ class TimeSeriesAccessor:
         return pd.Series(s, index=self.time, name=f"{col}_tidal")
 
 
-def pytide_harmonic_analysis(time, eta, constituents=[]):
-    """ Distributed harmonic analysis
-
-    Parameters
-    ----------
-    time:
-
-    constituents: list
-        tidal consituent e.g.:
-            ["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "S1", "M4"]
-    """
-    wt = pytide.WaveTable(constituents) # not working on months like time series, need to restrict
-    if isinstance(time, pd.Series):
-        time = time.values
-    if isinstance(eta, pd.Series):
-        eta = eta.values
-    # demean:
-    eta = eta - eta.mean()
-    # enforce correct type
-    time = time.astype("datetime64")
-    # compute nodal modulations
-    f, vu = wt.compute_nodal_modulations(time)
-    # compute harmonic analysis
-    a = wt.harmonic_analysis(eta, f, vu)
-    return pd.DataFrame(dict(amplitude=a,
-                             constituent=wt.constituents(),
-                             frequency=wt.freq()*86400/2/np.pi,
-                             frequency_rad=wt.freq(),
-                            )
-                       ).set_index("constituent")
-
-def pytide_predict_tides(time,
-                         har,
-                         cplx=False,
-                 ):
-    """ Predict tides based on pytide outputs
-
-    v = Re ( conj(amplitude) * dsp.f * np.exp(1j*vu) )
-
-    see: https://pangeo-pytide.readthedocs.io/en/latest/pytide.html#pytide.WaveTable.harmonic_analysis
-
-    Parameters
-    ----------
-    time: xr.DataArray
-        Target time
-    har: xr.DataArray, xr.Dataset, optional
-        Complex amplitudes. Load constituents from a reference station otherwise
-    """
-
-    if isinstance(time, pd.Series):
-        time = time.values
-
-    # build wave table
-    wt = pytide.WaveTable(list(har.index))
-
-    # compute nodal modulations
-    time = time.astype("datetime64")
-    _time = [(pd.Timestamp(t)-pd.Timestamp(1970,1,1)).total_seconds() for t in time]
-    f, vu = wt.compute_nodal_modulations(time)
-    v =  ( f * np.exp(1j*vu) * np.conj(har[:,None]) ).sum(axis=0)
-    if cplx:
-        return v
-    return np.real(v)
-
-
-def load_equilibrium_constituents(c=None):
-    """ Load equilibrium tide amplitudes
-
-    Parameters
-    ----------
-    c: str, list
-        constituent or list of constituent
-
-    Returns
-    -------
-    amplitude: amplitude of equilibrium tide in m for tidal constituent
-    phase: phase of tidal constituent
-    omega: angular frequency of constituent in radians
-    alpha: load love number of tidal constituent
-    species: spherical harmonic dependence of quadrupole potential
-    """
-    if c is None:
-        c = tidal_constituents
-    if isinstance(c, list):
-        df = (pd.DataFrame({_c: load_equilibrium_constituents(_c) for _c in c}).T)
-        df = df.sort_values("omega")
-        return df
-    elif isinstance(c, str):
-        p_names = ["amplitude", "phase", "omega", "alpha", "species"]
-        p = pyTMD.load_constituent(c)
-        return pd.Series({_n: _p for _n, _p in zip(p_names, p)})
-
-
 # ----------------------------- xarray accessor --------------------------------
 
 @xr.register_dataset_accessor("ts")
 class XrTimeSeriesAccessor:
     def __init__(self, xarray_obj):
+        assert False, "This accessor has not been implemented yet"
         self._lon, self._lat = self._validate(xarray_obj)
         self._obj = xarray_obj
         self._reset_geo()
@@ -421,3 +327,102 @@ def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
         f = fftfreq(len(lf)) * 24.0
         # print('Number of tapers = %d' %(nu[0]/2))
     return pd.Series(E, index=f)
+
+
+#-------------------------- tidal analysis ----------------------------------
+
+tidal_constituents = ['2n2','eps2','j1','k1','k2','l2','lambda2','m2','m3','m4','m6',
+            'm8','mf','mks2','mm','mn4','ms4','msf','msqm','mtm','mu2','n2',
+            'n4','nu2','o1','p1','q1','r2','s1','s2','s4','sa','ssa','t2']
+
+def pytide_harmonic_analysis(time, eta, constituents=[]):
+    """ Distributed harmonic analysis
+
+    Parameters
+    ----------
+    time:
+
+    constituents: list
+        tidal consituent e.g.:
+            ["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "S1", "M4"]
+    """
+    wt = pytide.WaveTable(constituents) # not working on months like time series, need to restrict
+    if isinstance(time, pd.Series):
+        time = time.values
+    if isinstance(eta, pd.Series):
+        eta = eta.values
+    # demean:
+    eta = eta - eta.mean()
+    # enforce correct type
+    time = time.astype("datetime64")
+    # compute nodal modulations
+    f, vu = wt.compute_nodal_modulations(time)
+    # compute harmonic analysis
+    a = wt.harmonic_analysis(eta, f, vu)
+    return pd.DataFrame(dict(amplitude=a,
+                             constituent=wt.constituents(),
+                             frequency=wt.freq()*86400/2/np.pi,
+                             frequency_rad=wt.freq(),
+                            )
+                       ).set_index("constituent")
+
+def pytide_predict_tides(time,
+                         har,
+                         cplx=False,
+                 ):
+    """ Predict tides based on pytide outputs
+
+    v = Re ( conj(amplitude) * dsp.f * np.exp(1j*vu) )
+
+    see: https://pangeo-pytide.readthedocs.io/en/latest/pytide.html#pytide.WaveTable.harmonic_analysis
+
+    Parameters
+    ----------
+    time: xr.DataArray
+        Target time
+    har: xr.DataArray, xr.Dataset, optional
+        Complex amplitudes. Load constituents from a reference station otherwise
+    """
+
+    if isinstance(time, pd.Series):
+        time = time.values
+
+    # build wave table
+    wt = pytide.WaveTable(list(har.index))
+
+    # compute nodal modulations
+    time = time.astype("datetime64")
+    _time = [(pd.Timestamp(t)-pd.Timestamp(1970,1,1)).total_seconds() for t in time]
+    f, vu = wt.compute_nodal_modulations(time)
+    v =  ( f * np.exp(1j*vu) * np.conj(har[:,None]) ).sum(axis=0)
+    if cplx:
+        return v
+    return np.real(v)
+
+
+def load_equilibrium_constituents(c=None):
+    """ Load equilibrium tide amplitudes
+
+    Parameters
+    ----------
+    c: str, list
+        constituent or list of constituent
+
+    Returns
+    -------
+    amplitude: amplitude of equilibrium tide in m for tidal constituent
+    phase: phase of tidal constituent
+    omega: angular frequency of constituent in radians
+    alpha: load love number of tidal constituent
+    species: spherical harmonic dependence of quadrupole potential
+    """
+    if c is None:
+        c = tidal_constituents
+    if isinstance(c, list):
+        df = (pd.DataFrame({_c: load_equilibrium_constituents(_c) for _c in c}).T)
+        df = df.sort_values("omega")
+        return df
+    elif isinstance(c, str):
+        p_names = ["amplitude", "phase", "omega", "alpha", "species"]
+        p = pyTMD.load_constituent(c)
+        return pd.Series({_n: _p for _n, _p in zip(p_names, p)})

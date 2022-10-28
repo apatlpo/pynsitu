@@ -75,8 +75,7 @@ class projection(object):
         _inv_dir = pyproj.enums.TransformDirection.INVERSE
         return self.proj.transform(x, y, direction=_inv_dir)
 
-# ----------------------------- formatters  -----------------------------------
-
+# ----------------------------- lon/lat formatters  ----------------------------
 
 def dec2degmin(dec):
     """ decimal degrees to degrees and minutes"""
@@ -98,7 +97,6 @@ def print_degmin(l):
     return '{} {:.5f}'.format(*dm)
 
 ## bokeh formatters
-
 lon_hover_formatter = CustomJSHover(code="""
     var D = value;
     var deg = Math.abs(Math.trunc(D));
@@ -123,9 +121,7 @@ lat_hover_formatter = CustomJSHover(code="""
     return deg + dir + " " + min.toFixed(3)
 """)
 
-
 # ----------------------------- plotting methods -------------------------------
-
 
 def plot_map(fig=None,
              region=None,
@@ -318,7 +314,6 @@ def load_bathy_contours(contour_file):
         contours = geojson.load(f)
     return contours
 
-
 # ----------------------------- pandas geo extension --------------------------
 
 def _xy2lonlat(x, y, proj=None):
@@ -413,7 +408,7 @@ class GeoAccessor:
         df = fun(self._obj, **kwargs)
         # update lon/lat
         df.loc[:,self._lon], df.loc[:,self._lat] = \
-                self.projection.xy2lonlat(d["x"], d["y"])
+                self.projection.xy2lonlat(df["x"], df["y"])
         return df
 
     def resample(self,
@@ -454,26 +449,35 @@ class GeoAccessor:
         def _compute_velocities(df):
             # drop duplicates
             df = df[~df.index.duplicated(keep='first')].copy()
+            # dt_i = t_i - t_{i-1}
             if time=="index":
                 dt = pd.Series(df.index).diff()/pd.Timedelta("1s")
-                dt.index = df.index
+                dt.index = df.index # necessary?
                 df.loc[:,"dt"] = dt
             else:
                 df.loc[:,"dt"] = df.loc[:,time].diff()/pd.Timedelta("1s")
-            dx = df.loc[:,"x"].diff()/df.dt
-            dy = df.loc[:,"y"].diff()/df.dt
+            is_uniform = (df["dt"].dropna().unique().size==1)
+            dxdt = df.loc[:,"x"].diff()/df.dt # u_i = x_i - x_{i-1}
+            dydt = df.loc[:,"y"].diff()/df.dt # v_i = y_i - y_{i-1}
             if centered:
                 # to do, not so easy when time sampling is not regular
-                pass
+                t = df.index.to_series()
+                # could delete t in expressions below
+                tm = t - pd.to_timedelta(dt.shift(-1)*.5, unit='s')
+                tp = t + pd.to_timedelta(dt*.5, unit="s")
+                w0 = (t-tm)/(tp-tm)
+                w1 = (t-tp)/(tm-tp)
+                df.loc[:,"velocity_east"] = dxdt*w0 + dxdt.shift(-1)*w1
+                df.loc[:,"velocity_north"] = dydt*w0 + dydt.shift(-1)*w1
             else:
-                df.loc[:,"ux"] = dx
-                df.loc[:,"uy"] = dy
-            df.loc[:,"velocity"] = np.sqrt(df.loc[:,"ux"]**2+df.loc[:,"uy"]**2)
+                df.loc[:,"velocity_east"] = dxdt
+                df.loc[:,"velocity_north"] = dydt
+            df.loc[:,"velocity"] = np.sqrt(df.loc[:,"velocity_east"]**2+df.loc[:,"velocity_north"]**2)
             if acceleration:
                 dt_acc = (dt.shift(-1)+dt)*0.5
-                df.loc[:,"acc_x"] = (df["ux"].shift(-1)-df["ux"])/dt_acc
-                df.loc[:,"acc_y"] = (df["uy"].shift(-1)-df["uy"])/dt_acc
-                df.loc[:,"acc"] = np.sqrt(df["acc_x"]**2+df["acc_y"]**2)
+                df.loc[:,"acceleration_east"] = (dxdt.shift(-1)-dxdt)/dt_acc
+                df.loc[:,"acceleration_north"] = (dydt.shift(-1)-dydt)/dt_acc
+                df.loc[:,"acceleration"] = np.sqrt(df["acceleration_east"]**2+df["acceleration_north"]**2)
             if not keep_dt:
                 df = df.drop(columns=["dt"])
             return df
@@ -532,7 +536,9 @@ class GeoAccessor:
         fig, ax = plt.subplots(1,1)
         ax.plot(df[self._lon], df[self._lat])
 
-    def plot_bokeh(self, unit=None, rule=None, mindec=True):
+    def plot_bokeh(self, unit=None, rule=None, mindec=True,
+                   velocity=False, acceleration=False,
+                   ):
         """ bokeh plot
 
         Parameters
@@ -548,8 +554,9 @@ class GeoAccessor:
         else:
             df = self._obj
 
-        if 'velocity' not in df.columns:
-            df = df.geo.compute_velocities()
+        if (velocity and 'velocity' not in df.columns) \
+            or (acceleration and 'acceleration' not in df.columns):
+            df = df.geo.compute_velocities(acceleration=acceleration)
 
         if mindec:
             _lon_tooltip = '@'+self._lon+'{custom}'
@@ -566,29 +573,35 @@ class GeoAccessor:
             _lat_formatter = 'printf'
 
         output_notebook()
-        TOOLS = 'pan,wheel_zoom,box_zoom,reset,help'
+        figkwargs = dict(tools='pan,wheel_zoom,box_zoom,reset,help',
+                         plot_width=350, plot_height=300,
+                         x_axis_type='datetime',
+                         )
         crosshair = CrosshairTool(dimensions="both")
-
         # line specs
         lw, c = 3, 'black'
 
-        def _add_start_end(s, y):
+        def _add_start_end(s, ymin, ymax=None):
+            """ add deployments start and end as colored vertical bars
+            """
             #_y = y.iloc[y.index.get_loc(_d.start.time), method='nearest')]
+            if not isinstance(ymin, float):
+                ymin = ymin.min()
+            if ymax is None:
+                ymax = ymin.max()
+            elif not isinstance(ymax, float):
+                ymax = ymax.max()
             if unit is not None:
                 for _d in unit:
                     s.line(x=[_d.start.time, _d.start.time],
-                           y=[y.min(), y.max()],
+                           y=[ymin, ymax],
                            color='cadetblue', line_width=2)
                     s.line(x=[_d.end.time, _d.end.time],
-                           y=[y.min(), y.max()],
+                           y=[ymin, ymax],
                            color='salmon', line_width=2)
 
         # create a new plot and add a renderer
-        s1 = figure(tools=TOOLS,
-                    plot_width=300, plot_height=300,
-                    title='longitude',
-                    x_axis_type='datetime',
-                    )
+        s1 = figure(title='longitude', **figkwargs)
         s1.line('time', self._lon, source=df, line_width=lw, color=c)
         s1.add_tools(HoverTool(
             tooltips=[('Time','@time{%F %T}'),('longitude', _lon_tooltip),], #
@@ -597,13 +610,9 @@ class GeoAccessor:
             ))
         _add_start_end(s1, df[self._lon])
         s1.add_tools(crosshair)
+        S = [s1]
         #
-        s2 = figure(tools=TOOLS,
-                    plot_width=300, plot_height=300,
-                    title='latitude',
-                    x_axis_type='datetime',
-                    x_range=s1.x_range
-                    )
+        s2 = figure(title='latitude', x_range=s1.x_range, **figkwargs)
         s2.line('time', self._lat, source=df, line_width=lw, color=c)
         s2.add_tools(HoverTool(
             tooltips=[('Time','@time{%F %T}'),('latitude',_lat_tooltip),],
@@ -612,23 +621,36 @@ class GeoAccessor:
             ))
         _add_start_end(s2, df[self._lat])
         s2.add_tools(crosshair)
+        S.append(s2)
         #
-        s3 = figure(tools=TOOLS,
-                    plot_width=300, plot_height=300,
-                    title='speed',
-                    x_axis_type='datetime',
-                    x_range=s1.x_range
-                    )
-        s3.line('time', 'velocity', source=df, line_width=lw, color=c)
-        s3.add_tools(HoverTool(
-            tooltips=[('Time','@time{%F %T}'),('Velocity','@{velocity}{0.2f} m/s'),],
-            formatters={'@time': 'datetime','@velocity' : 'printf',},
-            mode='vline'
-            ))
-        _add_start_end(s3, df['velocity'])
-        s3.add_tools(crosshair)
-
-        p = gridplot([[s1, s2, s3]])
+        if velocity:
+            s3 = figure(title='speed', x_range=s1.x_range, **figkwargs)
+            s3.line('time', 'velocity', source=df, line_width=lw, color=c, legend_label="velocity")
+            s3.line('time', 'velocity_east', source=df, line_width=lw, color="orange", legend_label="velocity_east")
+            s3.line('time', 'velocity_north', source=df, line_width=lw, color="blue", legend_label="velocity_north")
+            s3.add_tools(HoverTool(
+                tooltips=[('Time','@time{%F %T}'),('Velocity','@{velocity}{0.3f} m/s'),],
+                formatters={'@time': 'datetime','@velocity' : 'printf',},
+                mode='vline'
+                ))
+            _add_start_end(s3, -np.abs(df['velocity']), np.abs(df['velocity']))
+            s3.add_tools(crosshair)
+            S.append(s3)
+        if acceleration:
+            s4 = figure(title='acceleration', x_range=s1.x_range, **figkwargs)
+            s4.line('time', 'acceleration', source=df, line_width=lw, color=c)
+            s4.line('time', 'acceleration_east', source=df, line_width=lw, color="orange", legend_label="acceleration_east")
+            s4.line('time', 'acceleration_north', source=df, line_width=lw, color="blue", legend_label="acceleration_north")
+            s4.add_tools(HoverTool(
+                tooltips=[('Time','@time{%F %T}'),('Acceleration','@{acceleration}{0.2e} m/s^2'),],
+                formatters={'@time': 'datetime','@acceleration' : 'printf',},
+                mode='vline'
+                ))
+            _add_start_end(s4, df['acceleration'])
+            s4.add_tools(crosshair)
+            S.append(s4)
+        #
+        p = gridplot(S, ncols=2)
         show(p)
 
     def plot_bokeh_map(self, unit=None, rule=None, mindec=True):

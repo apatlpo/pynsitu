@@ -6,6 +6,7 @@ import numpy.testing as npt
 
 import pynsitu as pyn
 
+
 @pytest.fixture()
 def sample_drifter_data():
     """Create a drifter time series."""

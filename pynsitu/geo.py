@@ -168,7 +168,7 @@ def plot_map(
         geographical grid line width
     """
     crs = ccrs.PlateCarree()
-    
+
     if fig is None:
         fig = plt.figure(figsize=figsize)
     else:

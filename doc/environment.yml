@@ -1,0 +1,19 @@
+name: xrft
+dependencies:
+  - python=3.7
+  - pandas
+  - xarray
+  - dask
+  - scipy
+  - numpy
+  - pytest
+  - numpydoc
+  - sphinx
+  - ipython
+  - jupyter
+  - matplotlib
+  - pandoc
+  - pip:
+    - docrep
+    - nbsphinx
+    - sphinxcontrib-apidoc

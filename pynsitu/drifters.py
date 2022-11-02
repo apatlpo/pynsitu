@@ -90,6 +90,8 @@ def smooth_resample(
         Input drifter time series, must contain projected positions (`x` and `y`)
     t_target: `pandas.core.indexes.datetimes.DatetimeIndex`
         Output time series, as typically given by pd.date_range
+        Note that the problem seems ill-posed in the downsampling case ... need
+        to be fixed
     position_error: float
         Position error in meters
     acceleration_amplitude: float

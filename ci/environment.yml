@@ -1,4 +1,4 @@
-name: pynsitu_dev
+name: pynsitu
 channels:
   - pyviz
   - conda-forge

@@ -882,11 +882,13 @@ def _compute_velocities(
     df = df[~df.index.duplicated(keep="first")].copy()
     # dt_i = t_i - t_{i-1}
     if time == "index":
-        dt = pd.Series(df.index).diff() / pd.Timedelta("1s")
+        t = df.index.to_series()
+        dt = t.diff() / pd.Timedelta("1s")
         dt.index = df.index  # necessary?
         df.loc[:, "dt"] = dt
     else:
-        df.loc[:, "dt"] = df[time].diff() / pd.Timedelta("1s")
+        t = df[time]
+        df.loc[:, "dt"] = t.diff() / pd.Timedelta("1s")
     is_uniform = df["dt"].dropna().unique().size == 1
     if distance == "geoid":
         from pyproj import Geod
@@ -905,15 +907,9 @@ def _compute_velocities(
         dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
         dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
     if centered:
-        # to do, not so easy when time sampling is not regular
-        t = df.index.to_series()
-        # could delete t in expressions below
-        tm = t - pd.to_timedelta(dt * 0.5, unit="s")
-        tp = t + pd.to_timedelta(dt.shift(-1) * 0.5, unit="s")
-        wm = (t - tp) / (tm - tp)
-        wp = (t - tm) / (tp - tm)
-        df.loc[:, "velocity_east"] = dxdt * wm + dxdt.shift(-1) * wp
-        df.loc[:, "velocity_north"] = dydt * wm + dydt.shift(-1) * wp
+        w = dt / (dt + dt.shift(-1))
+        df.loc[:, "velocity_east"] = dxdt + (dxdt.shift(-1) - dxdt) * w
+        df.loc[:, "velocity_north"] = dydt + (dydt.shift(-1) - dxdt) * w
     else:
         df.loc[:, "velocity_east"] = dxdt
         df.loc[:, "velocity_north"] = dydt

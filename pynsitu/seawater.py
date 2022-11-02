@@ -26,10 +26,10 @@ import gsw
 
 @pd.api.extensions.register_dataframe_accessor("sw")
 class PdSeawaterAccessor:
-    """ Augmented pandas DataFrame able to carry and process seawater properties
-    """
+    """Augmented pandas DataFrame able to carry and process seawater properties"""
+
     def __init__(self, pandas_obj):
-        """ Instantiate the seawater accessor
+        """Instantiate the seawater accessor
         The DataFrame requires the following columns:
             - in situ temperature, accepted names: ["temperature", "temp", "t"]
             - practical salinity or conductivity, accepted names are:
@@ -47,18 +47,17 @@ class PdSeawaterAccessor:
 
     # @staticmethod
     def _validate(self, obj):
-        """verify all necessary information is here
-        """
+        """verify all necessary information is here"""
         # search for lon/lat in columns, as standard attribute, in attrs dict
         lon_names = ["longitude", "long", "lon"]
         lat_names = ["latitude", "lat"]
         for k in obj.columns:
             if k.lower() in lon_names:
                 self._lon = k
-                fill_lon=False
+                fill_lon = False
             if k.lower() in lat_names:
                 self._lat = k
-                fill_lat=False
+                fill_lat = False
         for k in obj.attrs:
             if k.lower() in lon_names:
                 _lon = obj.attrs[k]
@@ -188,7 +187,7 @@ class PdSeawaterAccessor:
         interpolate=False,
         **kwargs,
     ):
-        """ Temporal resampling
+        """Temporal resampling
         https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.resample.html
         This is not done inplace
 
@@ -205,8 +204,10 @@ class PdSeawaterAccessor:
         **kwargs:
             passed to resample
         """
-        assert is_datetime(self._obj.index.dtype), "The index should be a datetime object" \
+        assert is_datetime(self._obj.index.dtype), (
+            "The index should be a datetime object"
             + ". You may need to perform a set_index"
+        )
         return self.apply_with_eos_update(_resample, rule, op, interpolate, **kwargs)
 
     def compute_vertical_profile(

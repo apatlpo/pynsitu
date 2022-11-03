@@ -365,6 +365,7 @@ class GeoAccessor:
             # return the geographic center point of this DataFrame
             lat, lon = self._obj[self._lat], self._obj[self._lon]
             self._geo_proj_ref = (float(lon.iloc[0]), float(lat.iloc[0]))
+            #self._geo_proj_ref = (float(lon.mean()), float(lat.mean()))
         return self._geo_proj_ref
 
     def set_projection_reference(self, ref, reset=True):
@@ -389,7 +390,8 @@ class GeoAccessor:
         if "x" not in d.columns or "y" not in d.columns or overwrite:
             d.loc[:,"x"], d.loc[:,"y"] = self.projection.lonlat2xy(d.loc[:,self._lon],
                                                                    d.loc[:,self._lat],
-                                                                   )
+                                                                  )
+
 
     def compute_lonlat(self):
         """update longitude and latitude from projected coordinates """
@@ -413,7 +415,7 @@ class GeoAccessor:
         df = fun(self._obj, **kwargs)
         # update lon/lat
         df.loc[:,self._lon], df.loc[:,self._lat] = \
-                self.projection.xy2lonlat(d["x"], d["y"])
+                self.projection.xy2lonlat(df["x"], df["y"])
         return df
 
     def resample(self,
@@ -444,11 +446,14 @@ class GeoAccessor:
                 df = df.interpolate(method='linear')
             return df
         return self.apply_xy(_resample)
+    
+    
+    
 
-    def compute_velocities(self, time="index",
+    def compute_velocities(self, time="time",
                            centered=False,
                            keep_dt=False,
-                           acceleration=False,
+                           acceleration=False, acceleration_1dev=False,
                            ):
         """ compute velocity """
         def _compute_velocities(df):
@@ -460,20 +465,42 @@ class GeoAccessor:
                 df.loc[:,"dt"] = dt
             else:
                 df.loc[:,"dt"] = df.loc[:,time].diff()/pd.Timedelta("1s")
-            dx = df.loc[:,"x"].diff()/df.dt
-            dy = df.loc[:,"y"].diff()/df.dt
+            ux = df.loc[:,"x"].diff()/df.dt
+            uy = df.loc[:,"y"].diff()/df.dt
             if centered:
                 # to do, not so easy when time sampling is not regular
-                pass
+                ux1 = ux.shift(-1) 
+                uy1 = uy.shift(-1)
+                dt1 = df.dt.shift(-1)
+                ux_c = ux + (ux1-ux)/(1+dt1/df.dt)
+                uy_c = uy + (uy1-uy)/(1+dt1/df.dt)
+                df.loc[:,"ux"] = ux_c
+                df.loc[:,"uy"] = uy_c
             else:
-                df.loc[:,"ux"] = dx
-                df.loc[:,"uy"] = dy
+                df.loc[:,"ux"] = ux
+                df.loc[:,"uy"] = uy
             df.loc[:,"velocity"] = np.sqrt(df.loc[:,"ux"]**2+df.loc[:,"uy"]**2)
-            if acceleration:
-                dt_acc = (dt.shift(-1)+dt)*0.5
+            if acceleration :
+                #acceleration computed by to successive derivation on the position
+                dt_acc = (df.dt.shift(-1)+df.dt)*0.5
                 df.loc[:,"acc_x"] = (df["ux"].shift(-1)-df["ux"])/dt_acc
                 df.loc[:,"acc_y"] = (df["uy"].shift(-1)-df["uy"])/dt_acc
                 df.loc[:,"acc"] = np.sqrt(df["acc_x"]**2+df["acc_y"]**2)
+            if acceleration_1dev :
+                #acceleration from ve, vn already computed in the original dataset
+                ae = df["ve"].diff()/df.dt
+                an = df["vn"].diff()/df.dt
+                if centered : 
+                    #centered
+                    ae1 = ae.shift(-1)
+                    an1 = an.shift(-1)
+                    dt1 = df.dt.shift(-1)
+                    ae_c = ae + (ae1-ae)/(1+dt1/df.dt)
+                    an_c = an + (an1-an)/(1+dt1/df.dt)
+                    df.loc[:,"ae"] = ae_c
+                    df.loc[:,"an"] = an_c
+                
+                
             if not keep_dt:
                 df = df.drop(columns=["dt"])
             return df

@@ -496,10 +496,10 @@ class GeoAccessor:
         time="index",
         distance="geoid",
         centered=True,
-        acceleration=False,
-        acceleration_1dev=False,
         keep_dt=False,
         fill_startend=True,
+        v_name = {'ve':"velocity_east", 'vn':"velocity_north", 'v':"velocity"}
+        inplace=False,
     ):
         """compute velocity
         Parameters
@@ -512,10 +512,13 @@ class GeoAccessor:
             Uses projected fields otherwise ("x", "y")
         centered: boolean
             Centers velocity calculation temporally (True by default).
-        acceleration: boolean
-            Computes acceleration (False by default).
         keep_dt: boolean
             Keeps time intervals (False by default).
+        fill_startend : boolean
+            fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        v_name :  dictionnary containing columns names for eastern ('ve'), northen ('vn') and norm ('v') velocities ({'ve':"velocity_east", 'vn':"velocity_north", 'v':"velocity"} by default)
+        inplace : boolean
+            if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
         """
         return self.apply_xy(
             _compute_velocities,
@@ -526,6 +529,8 @@ class GeoAccessor:
             centered,
             keep_dt,
             fill_startend,
+            v_name,
+            inplace
         )
     
     
@@ -871,22 +876,47 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
 
 
 def compute_acceleration(df,
-                         from_velocities = True,
+                         from_ = 'vevn' #'lonlat',
                          east_key,
                          north_key,
-                         centered_velocity = True,
-                         inplace=False, 
+                         centered_velocities = True,
                          time="index",
                          keep_dt=False,
                          acc_name = {'ae':"acceleration_east", 'an':"acceleration_north", 'a':"acceleration"}
+                         inplace=False, 
                         ):
     
+    """compute acceleration from velocities or position
+        Parameters
+        ----------
+        df : dataframe,
+            dataframe containing trajectories
+        from_ :  str,
+            if 'vevn', compute accelaration from velocities
+        east_key: str
+               zonal velocities if from_='vevn'
+               longitude if from_ = 'lonlat'
+        north_key: str
+               meridional velocities if from_='vevn'
+               longitude if from_ = 'lonlat'
+        centered_velocities : boolean
+            True if the velocities is centered temporally (True by default)
+        time: str, optional
+            Column name. Default is "index", i.e. considers the index
+        keep_dt: boolean
+            Keeps time intervals (False by default).
+        fill_startend : boolean
+            fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        acc_name :  dictionnary containing columns names for zonal ('ae'), meridional ('an') and norm ('a') velocities ({'ae':"velocity_east", 'an':"velocity_north", 'a':"velocity"} by default)
+        inplace : boolean
+            if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
+        """
     if east_key is not in df.columns or north_key is not in df.columns :
-            assert False, east_key + ' and/or '+north_key + 'not in the dataframe, check names'
+            assert False, east_key + ' and/or '+north_key + ' not in the dataframe, check names'
+            
     # drop duplicates
     df = df[~df.index.duplicated(keep="first")].copy()
-    if not inplace:
-        df = df.copy()
+
     #dt    
     if time == "index":
         t = df.index.to_series()
@@ -899,7 +929,7 @@ def compute_acceleration(df,
         is_uniform = df["dt"].dropna().unique().size == 1
     
     # compute acc from velocities
-    if from_velocities :
+    if from_ = 'vevn' :
         if centered_velocity : 
             w = dt / (dt + dt.shift(-1))
             ae = df[ve_key].diff()/df.dt
@@ -908,24 +938,24 @@ def compute_acceleration(df,
             df.loc[:,acc_name['an']] = an + (an.shift(-1) - an) * w
             df.loc[:, acc_name['a']] = np.sqrt(
             df[acc_name['ae']] ** 2 + df[acc_name['an']] ** 2
-        else : 
+        else  : 
             dt_acc = (dt.shift(-1) + dt) * 0.5
             df.loc[:, acc_name['ae']] = (dxdt.shift(-1) - dxdt) / dt_acc`
             df.loc[:, acc_name['an']] = (dydt.shift(-1) - dydt) / dt_acc
             df.loc[:, acc_name['a']] = np.sqrt(df[acc_name['ae']] ** 2 + df[acc_name['an']] ** 2)
     
     # compute acc from positions           
-    else :
+    if from_ = 'lonlat' :
         df_v = _compute_veloctities(df,
                             east_key,
                             north_key,
                             v_name = {ve:"vx", vn:"vy", v:"v"}
                             inplace=False,
-                            time="index",
+                            time,
                             distance="geoid",
                             centered=False,
                             keep_dt=False,
-                            fill_startend=True,)
+                            fill_startend=False,)
         dt_acc = (dt.shift(-1)+dt)*0.5
         df.loc[:,acc_name['ae']] = (df_v["vx"].shift(-1)-df["vx"])/dt_acc
         df.loc[:,acc_name['an']] = (df_v["vy"].shift(-1)-df["vy"])/dt_acc
@@ -942,26 +972,50 @@ def compute_acceleration(df,
     if not inplace : 
                 var = [time, 'id'] +list(v_name.values())
                 return df[[l for l in var if l in df.columns]]# flexible for index or column, keep id and time
-    
 
 def _compute_velocities(
     df,
     lon_key,
     lat_key,
-    v_name = {'ve':"velocity_east", 'vn':"velocity_north", 'v':"velocity"}
-    inplace=False,
     time="index",
     distance="geoid",
     centered=True,
     keep_dt=False,
     fill_startend=True,
+    v_name = {'ve':"velocity_east", 'vn':"velocity_north", 'v':"velocity"}
+    inplace=False,
 ):
-    """core method to compute velocity from a dataframe"""
+                
+    """core method to compute velocity from a dataframe
+        Parameters
+        ----------
+        df : dataframe,
+            dataframe containing trajectories
+        lon_key: str
+               longitude column name in dataframe
+        lat_key: str
+               latitude column name in dataframe
+        time: str, optional
+            Column name. Default is "index", i.e. considers the index
+        distance: str, optional
+            Method to compute distances.
+            Default is geoid ("WGS84" with pyproj).
+            Uses projected fields otherwise ("x", "y")
+        centered: boolean
+            Centers velocity calculation temporally (True by default).
+        keep_dt: boolean
+            Keeps time intervals (False by default).
+        fill_startend : boolean
+            fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        v_name :  dictionnary containing columns names for eastern ('ve'), northen ('vn') and norm ('v') velocities ({'ve':"velocity_east", 'vn':"velocity_north", 'v':"velocity"} by default)
+        inplace : boolean
+            if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
+        """
+                
+    if lon_key is not in df.columns or lat_key is not in df.columns :
+            assert False, lon_key + ' and/or ' + lat_key + ' not in the dataframe, check names'
     # drop duplicates
     df = df[~df.index.duplicated(keep="first")].copy()
-    
-    if not inplace:
-        df = df.copy()
         
     # dt_i = t_i - t_{i-1}
     if time == "index":

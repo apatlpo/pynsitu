@@ -446,17 +446,25 @@ class GeoAccessor:
         df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
         return df
 
-    def apply_xy(self, fun, *args, **kwargs):
+    def apply_xy(self, fun, inplace=False, *args, **kwargs):
         """apply a function that requires working with projected coordinates x/y"""
         # ensures projection exists
         self.project()
         # apply function
-        df = fun(self._obj, *args, **kwargs)
-        # update lon/lat
-        df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(
-            df["x"], df["y"]
-        )
-        return df
+        if not inplace:
+            df = fun(self._obj, *args, **kwargs)
+            # update lon/lat
+            df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(
+                df["x"], df["y"]
+            )
+            return df
+        else:  # inplace
+            fun(self._obj, *args, **kwargs)
+            # update lon/lat
+            (
+                self._obj.loc[:, self._lon],
+                self._obj.loc[:, self._lat],
+            ) = self.projection.xy2lonlat(self._obj["x"], self._obj["y"])
 
     def resample(
         self,
@@ -492,14 +500,13 @@ class GeoAccessor:
 
     def compute_velocities(
         self,
-        inplace=False,
         time="index",
         distance="geoid",
         centered=True,
         keep_dt=False,
         fill_startend=True,
         v_name={"ve": "velocity_east", "vn": "velocity_north", "v": "velocity"},
-        inplace=False,
+        inplace=False,  # need to return something to give to apply_xy
     ):
         """compute velocity
         Parameters
@@ -522,6 +529,7 @@ class GeoAccessor:
         """
         return self.apply_xy(
             _compute_velocities,
+            inplace,
             self._lon,
             self._lat,
             time,
@@ -919,7 +927,7 @@ def compute_acceleration(
         )
 
     # drop duplicates
-    df = df[~df.index.duplicated(keep="first")].copy()
+    df = df[~df.index.duplicated(keep="first")]  # .copy()
 
     # dt
     if time == "index":
@@ -1032,7 +1040,7 @@ def _compute_velocities(
             lon_key + " and/or " + lat_key + " not in the dataframe, check names"
         )
     # drop duplicates
-    df = df[~df.index.duplicated(keep="first")].copy()
+    # df = df[~df.index.duplicated(keep="first")]  # .copy()
 
     # dt_i = t_i - t_{i-1}
     if time == "index":
@@ -1042,7 +1050,8 @@ def _compute_velocities(
         df.loc[:, "dt"] = dt
     else:
         t = df[time]
-        df.loc[:, "dt"] = t.diff() / pd.Timedelta("1s")
+        dt = t.diff() / pd.Timedelta("1s")
+        df.loc[:, "dt"] = dt
     is_uniform = df["dt"].dropna().unique().size == 1
 
     if distance == "geoid":
@@ -1078,11 +1087,9 @@ def _compute_velocities(
     if fill_startend:
         # fill end values
         df = df.bfill().ffill()
-    # return
-    if inplace:
-        return df
+
     if not inplace:
-        var = [time, "id"] + list(v_name.values())
+        var = [time, "id", lon_key, lat_key] + list(v_name.values())
         return df[
             [l for l in var if l in df.columns]
         ]  # flexible with index or column, keep id and time

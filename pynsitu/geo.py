@@ -882,10 +882,8 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
 
 def compute_acceleration(
     df,
-    east_key,
-    north_key,
-    from_="vevn",  #'lonlat',
-    centered_velocities=True,
+    from_=("vevn","ve", "vn")  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
+    centered_velocity=True,
     time="index",
     keep_dt=False,
     acc_name={
@@ -901,14 +899,11 @@ def compute_acceleration(
     ----------
     df : dataframe,
         dataframe containing trajectories
-    from_ :  str,
-        if 'vevn', compute accelaration from velocities
-    east_key: str
-           zonal velocities if from_='vevn'
-           longitude if from_ = 'lonlat'
-    north_key: str
-           meridional velocities if from_='vevn'
-           longitude if from_ = 'lonlat'
+    from_ :  tuple of str,
+    (key, east_name, north_name)
+        if key = 'vevn', compute accelaration from velocities
+        if key = 'lonlat', compute acceleration from lonlat time series
+        if key = 'xy', compute acceleration from xy time series
     centered_velocities : boolean
         True if the velocities is centered temporally (True by default)
     time: str, optional
@@ -919,15 +914,18 @@ def compute_acceleration(
         fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
     acc_name :  dictionnary containing columns names for zonal ('ae'), meridional ('an') and norm ('a') velocities ({'ae':"velocity_east", 'an':"velocity_north", 'a':"velocity"} by default)
     inplace : boolean
-        if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
+        if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed acceleration
     """
-    if east_key not in df.columns or north_key not in df.columns:
+    if from_[1] not in df.columns or from_[2] not in df.columns:
         assert False, (
-            east_key + " and/or " + north_key + " not in the dataframe, check names"
+            from_[1] + " and/or " + from_[2] + " not in the dataframe, check names"
         )
 
     # drop duplicates
     df = df[~df.index.duplicated(keep="first")]  # .copy()
+    
+    if not inplace : 
+        df = df.copy()
 
     # dt
     if time == "index":
@@ -937,15 +935,16 @@ def compute_acceleration(
         df.loc[:, "dt"] = dt
     else:
         t = df[time]
-        df.loc[:, "dt"] = t.diff() / pd.Timedelta("1s")
+        dt = t.diff() / pd.Timedelta("1s")
+        df.loc[:, "dt"] = dt
         is_uniform = df["dt"].dropna().unique().size == 1
 
     # compute acc from velocities
-    if from_ == "vevn":
+    if from_[0] == "vevn":
         if centered_velocity:
             w = dt / (dt + dt.shift(-1))
-            ae = df[east_key].diff() / df.dt
-            an = df[north_key].diff() / df.dt
+            ae = df[from_[1]].diff() / df.dt
+            an = df[from_[2]].diff() / df.dt
             df.loc[:, acc_name["ae"]] = ae + (ae.shift(-1) - ae) * w
             df.loc[:, acc_name["an"]] = an + (an.shift(-1) - an) * w
             df.loc[:, acc_name["a"]] = np.sqrt(
@@ -953,20 +952,20 @@ def compute_acceleration(
             )
         else:
             dt_acc = (dt.shift(-1) + dt) * 0.5
-            df.loc[:, acc_name["ae"]] = (df[east_key].shift(-1) - df[east_key]) / dt_acc
+            df.loc[:, acc_name["ae"]] = (df[from_[1]].shift(-1) - df[from_[1]]) / dt_acc
             df.loc[:, acc_name["an"]] = (
-                df[north_key].shift(-1) - df[north_key]
+                df[from_[2]].shift(-1) - df[from_[2]]
             ) / dt_acc
             df.loc[:, acc_name["a"]] = np.sqrt(
                 df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
             )
 
-    # compute acc from positions
-    if from_ == "lonlat":
+    # compute acc from positions in lonlat
+    if from_[0] == "lonlat":
         df_v = _compute_veloctities(
             df,
-            east_key,
-            north_key,
+            from_[1],
+            from_[2],
             time,
             v_name={ve: "vx", vn: "vy", v: "v"},
             centered=False,
@@ -980,15 +979,27 @@ def compute_acceleration(
         df.loc[:, acc_name["a"]] = np.sqrt(
             df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
         )
+        
+    # compute acc from positions in xy 
+    if from_[0] == "xy":
+        # leverage local projection, less accurate away from central point
+        dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
+        dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
+        
+        dt_acc = (dt.shift(-1) + dt) * 0.5
 
+        df.loc[:, acc_name["ae"]] = (dxdt.shift(-1) - dxdt) / dt_acc
+        df.loc[:, acc_name["an"]] = (dydt.shift(-1) - dydt) / dt_acc
+        df.loc[:, acc_name["a"]] = np.sqrt(
+            df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
+        )
+        
     if not keep_dt:
         df = df.drop(columns=["dt"])
     if fill_startend:
         # fill end values
         df = df.bfill().ffill()
 
-    if inplace:
-        return df
     if not inplace:
         var = [time, "id"] + list(acc_name.values())
         return df[
@@ -1039,9 +1050,13 @@ def _compute_velocities(
         assert False, (
             lon_key + " and/or " + lat_key + " not in the dataframe, check names"
         )
-    # drop duplicates
-    # df = df[~df.index.duplicated(keep="first")]  # .copy()
 
+    if not inplace : 
+        df = df.copy()
+        
+    # drop duplicates
+    df = df[~df.index.duplicated(keep="first")]  # .copy() 
+    
     # dt_i = t_i - t_{i-1}
     if time == "index":
         t = df.index.to_series()

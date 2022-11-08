@@ -882,7 +882,7 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
 
 def compute_acceleration(
     df,
-    from_=("vevn","ve", "vn")  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
+    from_=("vevn", "ve", "vn"),  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
     centered_velocity=True,
     time="index",
     keep_dt=False,
@@ -923,8 +923,8 @@ def compute_acceleration(
 
     # drop duplicates
     df = df[~df.index.duplicated(keep="first")]  # .copy()
-    
-    if not inplace : 
+
+    if not inplace:
         df = df.copy()
 
     # dt
@@ -953,9 +953,7 @@ def compute_acceleration(
         else:
             dt_acc = (dt.shift(-1) + dt) * 0.5
             df.loc[:, acc_name["ae"]] = (df[from_[1]].shift(-1) - df[from_[1]]) / dt_acc
-            df.loc[:, acc_name["an"]] = (
-                df[from_[2]].shift(-1) - df[from_[2]]
-            ) / dt_acc
+            df.loc[:, acc_name["an"]] = (df[from_[2]].shift(-1) - df[from_[2]]) / dt_acc
             df.loc[:, acc_name["a"]] = np.sqrt(
                 df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
             )
@@ -979,13 +977,13 @@ def compute_acceleration(
         df.loc[:, acc_name["a"]] = np.sqrt(
             df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
         )
-        
-    # compute acc from positions in xy 
+
+    # compute acc from positions in xy
     if from_[0] == "xy":
         # leverage local projection, less accurate away from central point
         dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
         dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
-        
+
         dt_acc = (dt.shift(-1) + dt) * 0.5
 
         df.loc[:, acc_name["ae"]] = (dxdt.shift(-1) - dxdt) / dt_acc
@@ -993,7 +991,7 @@ def compute_acceleration(
         df.loc[:, acc_name["a"]] = np.sqrt(
             df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
         )
-        
+
     if not keep_dt:
         df = df.drop(columns=["dt"])
     if fill_startend:
@@ -1051,12 +1049,12 @@ def _compute_velocities(
             lon_key + " and/or " + lat_key + " not in the dataframe, check names"
         )
 
-    if not inplace : 
+    if not inplace:
         df = df.copy()
-        
+
     # drop duplicates
-    df = df[~df.index.duplicated(keep="first")]  # .copy() 
-    
+    df = df[~df.index.duplicated(keep="first")]  # .copy()
+
     # dt_i = t_i - t_{i-1}
     if time == "index":
         t = df.index.to_series()

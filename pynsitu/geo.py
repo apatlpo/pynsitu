@@ -446,25 +446,17 @@ class GeoAccessor:
         df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
         return df
 
-    def apply_xy(self, fun, inplace=False, *args, **kwargs):
+    def apply_xy(self, fun, **kwargs):
         """apply a function that requires working with projected coordinates x/y"""
         # ensures projection exists
         self.project()
         # apply function
-        if not inplace:
-            df = fun(self._obj, *args, **kwargs)
-            # update lon/lat
-            df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(
-                df["x"], df["y"]
-            )
-            return df
-        else:  # inplace
-            fun(self._obj, *args, **kwargs)
-            # update lon/lat
-            (
-                self._obj.loc[:, self._lon],
-                self._obj.loc[:, self._lat],
-            ) = self.projection.xy2lonlat(self._obj["x"], self._obj["y"])
+        df = fun(self._obj, **kwargs)
+        # update lon/lat
+        df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(
+            df["x"], df["y"]
+        )
+        return df
 
     def resample(
         self,
@@ -527,9 +519,10 @@ class GeoAccessor:
         inplace : boolean
             if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
         """
-        return self.apply_xy(
-            _compute_velocities,
-            inplace,
+        if "x" not in self._obj.columns or "y" not in self._obj.columns:
+            self.project()
+        df = _compute_velocities(
+            self._obj,
             self._lon,
             self._lat,
             time,
@@ -540,6 +533,36 @@ class GeoAccessor:
             v_name,
             inplace,
         )
+
+        if not inplace:
+            return df
+
+    def compute_acceleration(
+        self,
+        from_=("vevn", "ve", "vn"),  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
+        centered_velocity=True,
+        time="index",
+        keep_dt=False,
+        acc_name={
+            "ae": "acceleration_east",
+            "an": "acceleration_north",
+            "a": "acceleration",
+        },
+        fill_startend=True,
+        inplace=False,
+    ):
+        df = _compute_acceleration(
+            self._obj,
+            from_,  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
+            centered_velocity,
+            time,
+            keep_dt,
+            acc_name,
+            fill_startend,
+            inplace,
+        )
+        if not inplace:
+            return df
 
     # --- transect
     def compute_transect(self, ds, vmin=None, dt_max=None):
@@ -880,7 +903,7 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
     return t, x, y, dfm
 
 
-def compute_acceleration(
+def _compute_acceleration(
     df,
     from_=("vevn", "ve", "vn"),  # ('lonlat','lon', 'lat') or ('xy', 'x', 'y')
     centered_velocity=True,
@@ -891,6 +914,7 @@ def compute_acceleration(
         "an": "acceleration_north",
         "a": "acceleration",
     },
+    fill_startend=True,
     inplace=False,
 ):
 
@@ -922,7 +946,10 @@ def compute_acceleration(
         )
 
     # drop duplicates
-    df = df[~df.index.duplicated(keep="first")]  # .copy()
+    if not inplace:
+        df = df[~df.index.duplicated(keep="first")]
+    else:
+        df[~df.index.duplicated(keep="first")]
 
     if not inplace:
         df = df.copy()
@@ -960,20 +987,20 @@ def compute_acceleration(
 
     # compute acc from positions in lonlat
     if from_[0] == "lonlat":
-        df_v = _compute_veloctities(
+        df_v = _compute_velocities(
             df,
             from_[1],
             from_[2],
             time,
-            v_name={ve: "vx", vn: "vy", v: "v"},
+            v_name={"ve": "vx", "vn": "vy", "v": "v"},
             centered=False,
             fill_startend=False,
         )
 
         dt_acc = (dt.shift(-1) + dt) * 0.5
 
-        df.loc[:, acc_name["ae"]] = (df_v["vx"].shift(-1) - df["vx"]) / dt_acc
-        df.loc[:, acc_name["an"]] = (df_v["vy"].shift(-1) - df["vy"]) / dt_acc
+        df.loc[:, acc_name["ae"]] = (df_v["vx"].shift(-1) - df_v["vx"]) / dt_acc
+        df.loc[:, acc_name["an"]] = (df_v["vy"].shift(-1) - df_v["vy"]) / dt_acc
         df.loc[:, acc_name["a"]] = np.sqrt(
             df[acc_name["ae"]] ** 2 + df[acc_name["an"]] ** 2
         )
@@ -993,13 +1020,18 @@ def compute_acceleration(
         )
 
     if not keep_dt:
-        df = df.drop(columns=["dt"])
+        del df["dt"]
+
+    # fill end values
     if fill_startend:
-        # fill end values
-        df = df.bfill().ffill()
+        if inplace:
+            df.bfill(inplace=True)
+            df.ffill(inplace=True)
+        else:
+            df = df.bfill().ffill()
 
     if not inplace:
-        var = [time, "id"] + list(acc_name.values())
+        var = [time, "id", from_[1], from_[2]] + list(acc_name.values())
         return df[
             [l for l in var if l in df.columns]
         ]  # flexible for index or column, keep id and time
@@ -1049,11 +1081,11 @@ def _compute_velocities(
             lon_key + " and/or " + lat_key + " not in the dataframe, check names"
         )
 
-    if not inplace:
-        df = df.copy()
-
     # drop duplicates
-    df = df[~df.index.duplicated(keep="first")]  # .copy()
+    if not inplace:
+        df = df[~df.index.duplicated(keep="first")]
+    else:
+        df[~df.index.duplicated(keep="first")]
 
     # dt_i = t_i - t_{i-1}
     if time == "index":
@@ -1090,16 +1122,21 @@ def _compute_velocities(
         df.loc[:, v_name["vn"]] = dydt + (dydt.shift(-1) - dxdt) * w
     else:
         df.loc[:, v_name["ve"]] = dxdt
-        df.loc[:, v_name["ve"]] = dydt
+        df.loc[:, v_name["vn"]] = dydt
     df.loc[:, v_name["v"]] = np.sqrt(
         df.loc[:, v_name["ve"]] ** 2 + df.loc[:, v_name["vn"]] ** 2
     )
 
     if not keep_dt:
-        df = df.drop(columns=["dt"])
+        del df["dt"]
+
+    # fill end values
     if fill_startend:
-        # fill end values
-        df = df.bfill().ffill()
+        if inplace:
+            df.bfill(inplace=True)
+            df.ffill(inplace=True)
+        else:
+            df = df.bfill().ffill()
 
     if not inplace:
         var = [time, "id", lon_key, lat_key] + list(v_name.values())

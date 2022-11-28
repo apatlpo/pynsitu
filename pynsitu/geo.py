@@ -453,9 +453,7 @@ class GeoAccessor:
         # apply function
         df = fun(self._obj, **kwargs)
         # update lon/lat
-        df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(
-            df["x"], df["y"]
-        )
+        df.loc[:, self._lon], df.loc[:, self._lat] = self.projection.xy2lonlat(df["x"], df["y"])
         return df
 
     def resample(

@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.9
   - xarray
-  - zarr
+#  - zarr
 #  - netcdf4
 #  - geopandas
 #  - hvplot
@@ -14,16 +14,16 @@ dependencies:
 #  - cartopy
 #  - geoviews
 #  - folium
-  - cmocean
+#  - cmocean
 #  - xrft
-  - gsw
+#  - gsw
 #  - pyinterp
 #  - pytide
 #  - pyTMD
   - numpydoc
   - sphinx
-  - ipython
-  - jupyter
+#  - ipython
+#  - jupyter
   - matplotlib
   - pandoc
   - pip

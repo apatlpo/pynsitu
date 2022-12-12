@@ -1,6 +1,6 @@
 name: pynsitu
 channels:
-  - pyviz
+#  - pyviz
   - conda-forge
   - defaults
 dependencies:
@@ -8,8 +8,8 @@ dependencies:
   - xarray
   - zarr
 #  - netcdf4
-  #- geopandas
-  - hvplot
+#  - geopandas
+#  - hvplot
 #  - seaborn
 #  - cartopy
 #  - geoviews

@@ -1,19 +1,35 @@
-name: xrft
+name: pynsitu
+channels:
+  - pyviz
+  - conda-forge
+  - defaults
 dependencies:
-  - python=3.7
-  - pandas
+  - python=3.10
   - xarray
-  - dask
-  - scipy
-  - numpy
-  - pytest
+  - zarr
+  - netcdf4
+  - geopandas
+  - hvplot
+  - seaborn
+  - cartopy
+  - geoviews
+  - folium
+  - cmocean
+  - xrft
+  - gsw
+  - pyinterp
+  - pytide
+  - pyTMD
   - numpydoc
   - sphinx
   - ipython
   - jupyter
   - matplotlib
   - pandoc
+  - pip
   - pip:
+    - pynmea2
+    - geojsoncontour
     - docrep
     - nbsphinx
     - sphinxcontrib-apidoc

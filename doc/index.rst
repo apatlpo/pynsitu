@@ -6,18 +6,13 @@ pynsitu: Oceanographic In Situ Data analysis
 ==============================================
 
 **pynsitu** is a Python package for the analysis of in situ oceanographic
-data based on pandas_ and xarray_ arrays. HERE
-It is:
+data based on pandas_ and xarray_ objects.
 
-- **Powerful**: It keeps the metadata and coordinates of the original xarray dataset and provides a clean work flow of DFT.
-- **Easy-to-use**: ...
 
 .. note::
 
     some note about current status:
-    ... is at early stage of development and will keep improving in the future.
-    The discrete Fourier transform API should be quite stable,
-    but minor utilities could change in the next version.
+    This package is at early stage of development and will keep improving in the future.
     If you find any bugs or would like to request any enhancements,
     please `raise an issue on GitHub <https://github.com/apatlpo/pynsitu/issues>`_.
 
@@ -29,7 +24,6 @@ Documentation
    :caption: Getting Started
 
    why-pynsitu
-   limitations
    installation
    contributor_guide
 

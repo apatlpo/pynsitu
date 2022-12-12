@@ -4,21 +4,21 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 
-import geopandas as gpd
-from shapely.geometry import Polygon, Point
-from shapely import wkt
-from shapely.ops import transform
+#import geopandas as gpd
+#from shapely.geometry import Polygon, Point
+#from shapely import wkt
+#from shapely.ops import transform
 import pyproj
 
 crs_wgs84 = pyproj.CRS("EPSG:4326")
 import pyinterp
 
 # import pyinterp.geohash as geohash
-import geojson
+#import geojson
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, datetime
-from matplotlib.colors import cnames
+#from matplotlib.dates import date2num, datetime
+#from matplotlib.colors import cnames
 
 #
 from bokeh.io import output_notebook, show

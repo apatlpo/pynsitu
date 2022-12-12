@@ -7,19 +7,19 @@ dependencies:
   - python=3.9
   - xarray
   - zarr
-  - netcdf4
-  - geopandas
+#  - netcdf4
+  #- geopandas
   - hvplot
-  - seaborn
-  - cartopy
-  - geoviews
-  - folium
+#  - seaborn
+#  - cartopy
+#  - geoviews
+#  - folium
   - cmocean
-  - xrft
+#  - xrft
   - gsw
-  - pyinterp
-  - pytide
-  - pyTMD
+#  - pyinterp
+#  - pytide
+#  - pyTMD
   - numpydoc
   - sphinx
   - ipython
@@ -28,8 +28,8 @@ dependencies:
   - pandoc
   - pip
   - pip:
-    - pynmea2
-    - geojsoncontour
+#    - pynmea2
+#    - geojsoncontour
     - docrep
     - nbsphinx
     - sphinxcontrib-apidoc

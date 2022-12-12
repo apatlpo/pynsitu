@@ -8,9 +8,16 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, datetime
 from matplotlib.colors import cnames
 
-import pytide
-import pyTMD
-
+try:
+    import pytide
+except:
+    print("Warning: could not import pytide")
+    pytide = None
+try:
+    import pyTMD
+except:
+    print("Warning: could not import pyTMD")
+    pyTMD = None
 
 # ------------------------------ parameters ------------------------------------
 

@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -8,10 +6,11 @@ import pandas as pd
 # from shapely.geometry import Polygon, Point
 # from shapely import wkt
 # from shapely.ops import transform
-import pyproj
-
-crs_wgs84 = pyproj.CRS("EPSG:4326")
-import pyinterp
+try:
+    import pyproj
+    crs_wgs84 = pyproj.CRS("EPSG:4326")
+except:
+    print("Warning: could not import pyproj")
 
 # import pyinterp.geohash as geohash
 # import geojson
@@ -21,12 +20,15 @@ import matplotlib.pyplot as plt
 # from matplotlib.dates import date2num, datetime
 # from matplotlib.colors import cnames
 
-#
-from bokeh.io import output_notebook, show
-from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, CustomJSHover, FuncTickFormatter
-from bokeh.models import CrosshairTool
-from bokeh.plotting import figure
+try:
+    #
+    from bokeh.io import output_notebook, show
+    from bokeh.layouts import gridplot
+    from bokeh.models import HoverTool, CustomJSHover
+    from bokeh.models import CrosshairTool
+    from bokeh.plotting import figure
+except:
+    print("bokeh is not installed")
 
 
 # ------------------------------ parameters ------------------------------------

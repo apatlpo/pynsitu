@@ -8,15 +8,15 @@ import matplotlib.cm as cmx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import cmocean.cm as cm
 
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import cartopy.geodesic as cgeo
-from cartopy.io import shapereader
-
-crs = ccrs.PlateCarree()
+try:
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.io import shapereader
+    crs = ccrs.PlateCarree()
+except:
+    print("Warning: could not import cartopy")
 
 default_resolution = "10m"
-
 
 def plot_map_tmp(
     fig=None,

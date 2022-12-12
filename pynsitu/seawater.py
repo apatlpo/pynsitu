@@ -86,8 +86,10 @@ class PdSeawaterAccessor:
             raise AttributeError("Did not find an attribute latitude")
         # check all values of lon/lat are not NaN
         if ~all(~pd.isna(obj[self._lon])) or ~all(~pd.isna(obj[self._lat])):
-            print("some values of longitude and latitudes are NaN, you may want to fill in with correct values")
-        
+            print(
+                "some values of longitude and latitudes are NaN, you may want to fill in with correct values"
+            )
+
         # deal now with actual seawater properties
         t, s, c, p, d = None, None, None, None, None
         t_potential = ["temperature", "temp", "t"]

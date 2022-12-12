@@ -13,6 +13,7 @@ import pynsitu as pyn
 
 ## events class
 
+
 def test_events_instantiation():
     """test creation of events objects"""
 
@@ -40,14 +41,16 @@ def test_events_str():
     )
     assert str(e) == "label 2016-02-09 05:35:00 7.29 43.33"
 
+
 ## campaign class
+
 
 def test_campaign_instantiation():
     """test creation of campaign object"""
 
     yaml = "pynsitu/tests/campaign.yaml"
     cp = pyn.Campaign(yaml)
-    
+
     # str
     print(cp)
 
@@ -64,8 +67,9 @@ def test_campaign_instantiation():
     cp.timeline()
 
     # test various features of campaign class
-    #units = [u for u in cp]
-    #assert units[0]=="underway"
+    # units = [u for u in cp]
+    # assert units[0]=="underway"
+
 
 if __name__ == "__main__":
     test_campaign_instantiation()

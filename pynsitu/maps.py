@@ -286,6 +286,7 @@ _bathy_etopo1 = os.path.join(
     "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
 )
 
+
 def load_bathy(bathy, bounds=None, steps=None, land=False):
     """Load bathymetry
 
@@ -318,17 +319,17 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
         ds = ds.rename(lon="longitude")
     if "lat" in ds.dims:
         ds = ds.rename(lat="latitude")
-    
-    assert (
-        ("longitude" in ds.dims) and ("latitude" in ds.dims)
+
+    assert ("longitude" in ds.dims) and (
+        "latitude" in ds.dims
     ), f"lon, lat must be in bathymetric dataset, this not the case in {bathy}"
-    
+
     if steps is not None:
         ds = ds.isel(
             longitude=slice(0, None, steps[0]),
             latitude=slice(0, None, steps[1]),
         )
-    
+
     if bounds is not None:
         ds = ds.sel(
             longitude=slice(bounds[0], bounds[1]),
@@ -364,6 +365,7 @@ def plot_bathy(
     if clabel:
         plt.clabel(cs, cs.levels, inline=True, fmt="%.0f", fontsize=9)
 
+
 def store_bathy_contours(
     bathy,
     contour_file="contours.geojson",
@@ -396,4 +398,3 @@ def load_bathy_contours(contour_file):
     with open(contour_file, "r") as f:
         contours = geojson.load(f)
     return contours
-

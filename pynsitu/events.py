@@ -22,6 +22,7 @@ from folium.plugins import MeasureControl, MousePosition
 
 from .maps import plot_map, plot_bathy, load_bathy_contours, store_bathy_contours
 
+
 class Event(object):
     """An event is an atom used to describe deployments.
     It contains four elementary information:
@@ -114,12 +115,13 @@ class Deployment(object):
             of events (see `event` doc), and where meta is a dictionnary
             containing relevant information about the deployment
         """
-        
+
         self.label = label
-        
-        assert (start is not None 
-        or loglines is not None), "start or loglines must be provided"
-        
+
+        assert (
+            start is not None or loglines is not None
+        ), "start or loglines must be provided"
+
         if start is None:
             start = loglines[0]
         if not isinstance(start, Event):
@@ -129,7 +131,7 @@ class Deployment(object):
             end = loglines[1]
         if not isinstance(end, Event):
             self.end = Event(label="end", logline=end)
-        
+
         if meta is None:
             if len(loglines) == 3:
                 meta = loglines[2]["info"]
@@ -197,7 +199,9 @@ class dictskip(object):
 
     def __init__(self, *args, **kwargs):
         self._dict = dict(*args, **kwargs)
-        self._skip = ["label", ]
+        self._skip = [
+            "label",
+        ]
 
     def __contains__(self, item):
         return item in self._dict
@@ -222,10 +226,11 @@ class dictskip(object):
     def __str__(self):
         return self["label"] + "\n" + "\n".join(str(d) for d in self)
 
+
 class Deployments(UserDict):
-    """ deployement dictionnary, provides shortcuts to access data in meta subdicts, e.g.:
-        p = deployments(meta=dict(a=1))
-        p["a"] # returns 1
+    """deployement dictionnary, provides shortcuts to access data in meta subdicts, e.g.:
+    p = deployments(meta=dict(a=1))
+    p["a"] # returns 1
     """
 
     def __init__(self, *args, **kwargs):
@@ -239,7 +244,7 @@ class Deployments(UserDict):
             return self.meta[key]
         return self.data[key]
 
-    #def __iter__(self):
+    # def __iter__(self):
     #    """ yield value instead of key """
     #    for key, value in self.data.items():
     #        yield value
@@ -250,16 +255,19 @@ class Deployments(UserDict):
     def __str__(self):
         return self["label"] + "\n" + "\n".join(str(d) for d in self)
 
+
 class Platform(UserDict):
-    """ platform dictionnary, provides shortcuts to access data in meta, sensors and deployments subdicts, e.g.:
-        p = platform(sensors=dict(a=1), deployments=dict(b=2))
-        p["a"] # returns 1
+    """platform dictionnary, provides shortcuts to access data in meta, sensors and deployments subdicts, e.g.:
+    p = platform(sensors=dict(a=1), deployments=dict(b=2))
+    p["a"] # returns 1
     """
+
     def __getitem__(self, key):
         for t in ["meta", "sensors", "deployments"]:
             if key in self.data[t]:
                 return self.data[t][key]
         return self.data[key]
+
 
 class Campaign(object):
     """Campaign object, gathers deployments information from a yaml file"""
@@ -279,7 +287,12 @@ class Campaign(object):
         # deployments
         if "deployments" in cp:
             print(cp["deployments"])
-            self.deployments = Deployments({d: Deployment(label=d, **v) if d!="meta" else v for d, v in cp["deployments"].items()})
+            self.deployments = Deployments(
+                {
+                    d: Deployment(label=d, **v) if d != "meta" else v
+                    for d, v in cp["deployments"].items()
+                }
+            )
 
         # platforms
         if "platforms" in cp:
@@ -310,7 +323,7 @@ class Campaign(object):
 
     def __iter__(self):
         """iterates around deployments and platforms"""
-        for key in list(self.deployments)+list(self.platforms):
+        for key in list(self.deployments) + list(self.platforms):
             yield key
 
     def items(self):
@@ -474,7 +487,7 @@ class Campaign(object):
         grid=True,
     ):
         """Plot the campaign deployment timeline
-        
+
         Parameters
         ----------
         platforms: boolean, optional
@@ -486,7 +499,7 @@ class Campaign(object):
         start_scale:
         ax: pyplot.axes, optional
         grid: boolean, optional
-        
+
         """
 
         if ax is None:
@@ -498,7 +511,7 @@ class Campaign(object):
         starts, ends = [], []
 
         def plot_d(d, y, label=None, color=None, **kwargs):
-            """ plot deployment as single rectangle """
+            """plot deployment as single rectangle"""
             start = mdates.date2num(d.start.time)
             end = mdates.date2num(d.end.time)
             rect = Rectangle(
@@ -519,7 +532,7 @@ class Campaign(object):
         if deployments:
             for _, d in self.deployments.items():
                 _kwargs = dict(label=d.label, **d.meta)
-                #if not labels:
+                # if not labels:
                 #    _kwargs.pop("label")
                 plot_d(d, y, **_kwargs)
                 yticks.append(y)
@@ -545,7 +558,7 @@ class Campaign(object):
                         _kwargs.pop("label")
                         plot_d(d, y, **_kwargs)
                     yticks.append(y)
-                    yticks_labels.append(p+" "+s)
+                    yticks_labels.append(p + " " + s)
                     y += -1
 
         ax.set_title(self.name)
@@ -730,12 +743,14 @@ class Campaign(object):
         if any([_ == "*" for _ in [unit, item, deployment]]):
             return glob(
                 os.path.join(
-                    self["path_processed"], unit + "_" + _item + deployment + "." + extension
+                    self["path_processed"],
+                    unit + "_" + _item + deployment + "." + extension,
                 )
             )
         else:
             return os.path.join(
-                self["path_processed"], unit + "_" + _item + deployment + "." + extension
+                self["path_processed"],
+                unit + "_" + _item + deployment + "." + extension,
             )
 
 
@@ -751,8 +766,9 @@ _default_campaign_meta = {
     "path_processed": "",
 }
 
+
 def _process_meta_campaign(cp):
-    """ process meta campaign data """
+    """process meta campaign data"""
 
     # fill in meta information
     meta = dict(**_default_campaign_meta)
@@ -787,11 +803,12 @@ def _process_meta_campaign(cp):
 
     return meta
 
+
 def _process_platforms(platforms):
-    """ process platforms data """
-    
+    """process platforms data"""
+
     pfs = dict()
-    
+
     for p, v in platforms.items():
 
         pf = Platform()
@@ -804,24 +821,36 @@ def _process_platforms(platforms):
         # deployments
         D = Deployments(meta=dict(label=p, **pmeta))
         if "deployments" in v:
-            D.update({d: Deployment(label=d, loglines=vd) for d, vd in v["deployments"].items() if d!="meta"})
+            D.update(
+                {
+                    d: Deployment(label=d, loglines=vd)
+                    for d, vd in v["deployments"].items()
+                    if d != "meta"
+                }
+            )
         pf["deployments"] = D
 
         # sensors
         sensors = dict()
         if "sensors" in v:
-            #o["sensors"] = list(v["sensors"])
+            # o["sensors"] = list(v["sensors"])
             for s, vs in v["sensors"].items():
                 D = Deployments(meta=dict(label=s, **pmeta))
                 if "deployments" in vs:
-                    D.update({d: Deployment(label=d, loglines=vd) if d!="meta" else vd for d, vd in vs["deployments"].items()})
+                    D.update(
+                        {
+                            d: Deployment(label=d, loglines=vd) if d != "meta" else vd
+                            for d, vd in vs["deployments"].items()
+                        }
+                    )
                 sensors[s] = D
         pf["sensors"] = sensors
-        
+
         # store in platforms dict
         pfs[p] = pf
 
     return pfs
+
 
 def _load_processed_file(file, **kwargs):
     """load preprocessed file, select object type based on filename"""

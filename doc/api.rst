@@ -13,25 +13,25 @@ documentation.
 
   A note
 
-pynsitu
+events
 ====
 
-.. automodule:: xrft.xrft
+.. automodule:: pynsitu.events
   :members:
 
-detrend
+geo
 =======
 
 You also may wish to use xrft's detrend function on its own.
 
-.. automodule:: xrft.detrend
+.. automodule:: pynsitu.geo
   :members:
 
-padding
+maps
 =======
 
 Pad and unpad arrays and its coordinates so they can be used for computing
 FFTs.
 
-.. automodule:: xrft.padding
+.. automodule:: pynsitu.maps
   :members:

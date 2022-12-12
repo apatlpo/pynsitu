@@ -84,7 +84,10 @@ class PdSeawaterAccessor:
             raise AttributeError("Did not find an attribute longitude")
         if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
-
+        # check all values of lon/lat are not NaN
+        if ~all(~pd.isna(obj[self._lon])) or ~all(~pd.isna(obj[self._lat])):
+            print("some values of longitude and latitudes are NaN, you may want to fill in with correct values")
+        
         # deal now with actual seawater properties
         t, s, c, p, d = None, None, None, None, None
         t_potential = ["temperature", "temp", "t"]
@@ -177,7 +180,7 @@ class PdSeawaterAccessor:
         # apply function
         df = fun(self._obj, *args, **kwargs)
         # update eos related variables
-        df = self.update_eos(inplace=False)
+        df = df.sw.update_eos(inplace=False)
         return df
 
     def resample(

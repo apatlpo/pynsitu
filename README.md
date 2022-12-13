@@ -5,21 +5,7 @@
 
 # pynsitu: oceanographic insitu data toolbox
 
-## install
-
-At the moment, the unique method to install pynsitu, along with its dependencies, is to clone and manually install the adequate environment:
-
-```
-git clone https://github.com/apatlpo/pynsitu.git
-cd pynsitu
-conda create -n pynsitu python=3.10
-conda env update -n pynsitu -f ci/environment.yml
-#conda env create -n pynsitu -f ci/environment.yml
-#mamba env create -n pynsitu -f ci/environment.yml
-pip install -e .
-```
-
-
+...
 
 ## data model
 

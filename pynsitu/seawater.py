@@ -9,14 +9,19 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, datetime
 from matplotlib.colors import cnames
 
-##
-from bokeh.io import output_notebook, show
-from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, FuncTickFormatter
-from bokeh.models import CrosshairTool
-from bokeh.plotting import figure
+try:
+    from bokeh.io import output_notebook, show
+    from bokeh.layouts import gridplot
+    from bokeh.models import HoverTool
+    from bokeh.models import CrosshairTool
+    from bokeh.plotting import figure
+except:
+    print("Warning: could not import bokeh")
 
-import gsw
+try:
+    import gsw
+except:
+    print("Warning: could not import gsw")
 
 # ------------------------------ parameters ------------------------------------
 

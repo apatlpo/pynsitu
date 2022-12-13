@@ -22,7 +22,6 @@ import matplotlib.pyplot as plt
 # from matplotlib.colors import cnames
 
 try:
-    #
     from bokeh.io import output_notebook, show
     from bokeh.layouts import gridplot
     from bokeh.models import HoverTool, CustomJSHover
@@ -30,11 +29,7 @@ try:
     from bokeh.plotting import figure
 except:
     print("Warning: could not import bokeh")
-    foo = lambda *args, **kargs: None
-    HoverTool = foo
-    CustomJSHover = foo
-    CrosshairTool = foo
-
+    CustomJSHover = lambda *args, **kargs: None
 
 # ------------------------------ parameters ------------------------------------
 

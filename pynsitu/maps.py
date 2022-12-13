@@ -5,6 +5,7 @@ import numpy as np
 
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 try:
     import cmocean.cm as cm
 except:

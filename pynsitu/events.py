@@ -16,9 +16,6 @@ import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from matplotlib.colors import cnames
 
-import folium
-from folium.plugins import MeasureControl, MousePosition
-
 from .maps import plot_map, plot_bathy, load_bathy_contours, store_bathy_contours
 
 
@@ -275,6 +272,7 @@ class Campaign(object):
 
         # open yaml information file
         import yaml
+
         if ".yaml" not in file:
             file = file + ".yaml"
         with open(file, "r") as stream:
@@ -372,6 +370,8 @@ class Campaign(object):
                 - "CartoDB" (positron and dark_matter)
 
         """
+        import folium
+        from folium.plugins import MeasureControl, MousePosition
 
         if ignore == "all":
             ignore = list(self.deployments) + self(self.platforms)

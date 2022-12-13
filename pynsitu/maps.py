@@ -1,10 +1,9 @@
 import os
 
 import xarray as xr
+import numpy as np
 
 from matplotlib import pyplot as plt
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import cmocean.cm as cm
 
@@ -397,6 +396,8 @@ def store_bathy_contours(
 
 def load_bathy_contours(contour_file):
     """load bathymetric contours as geojson"""
+    import geojson
+
     with open(contour_file, "r") as f:
         contours = geojson.load(f)
     return contours

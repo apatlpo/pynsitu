@@ -5,7 +5,10 @@ import numpy as np
 
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import cmocean.cm as cm
+try:
+    import cmocean.cm as cm
+except:
+    print("Warning: could not import cmocean")
 
 try:
     import cartopy.crs as ccrs

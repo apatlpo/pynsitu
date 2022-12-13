@@ -8,6 +8,7 @@ import pandas as pd
 # from shapely.ops import transform
 try:
     import pyproj
+
     crs_wgs84 = pyproj.CRS("EPSG:4326")
 except:
     print("Warning: could not import pyproj")
@@ -28,7 +29,11 @@ try:
     from bokeh.models import CrosshairTool
     from bokeh.plotting import figure
 except:
-    print("bokeh is not installed")
+    print("Warning: could not import bokeh")
+    foo = lambda *args, **kargs: None
+    HoverTool = foo
+    CustomJSHover = foo
+    CrosshairTool = foo
 
 
 # ------------------------------ parameters ------------------------------------

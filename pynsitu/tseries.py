@@ -262,6 +262,7 @@ class XrTimeSeriesAccessor:
         if self._geo_proj is None:
             lonc, latc = self._geo_proj_ref
             from .geo import pyproj
+
             self._geo_proj = pyproj.Proj(
                 proj="aeqd",
                 lat_0=latc,

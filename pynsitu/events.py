@@ -654,54 +654,6 @@ class Campaign(object):
         else:
             return D
 
-        # !!! code below can probably be deleted
-
-        # particular units
-        if item == "ship":
-            ship_file = os.path.join(self["path_processed"], "ship.nc")
-            if os.path.isfile(ship_file):
-                return xr.open_dataset(ship_file).to_dataframe()
-            else:
-                return
-        elif item == "argo":
-            argo_file = os.path.join(self["path_processed"], "argo.nc")
-            if os.path.isfile(argo_file):
-                return xr.open_dataset(argo_file).compute()
-            else:
-                return
-
-        _files = [f.split("/")[-1] for f in data_files]
-
-        units = set(f.split("_")[0] for f in _files)
-        if unit:
-            if isinstance(unit, str):
-                units = [unit]
-            else:
-                units = [u for u in units if u in unit]
-
-        data = {}
-        for u in units:
-            _files = [
-                f.split("/")[-1]
-                for f in self._get_processed_files(
-                    unit=u,
-                    item=item,
-                )
-            ]
-            deployment_index = 2 if item is not None else 1
-            deployments = [f.split("_")[deployment_index].split(".")[0] for f in _files]
-            data[u] = {
-                d: _load_processed_file(
-                    self._get_processed_files(
-                        unit=u,
-                        item=item,
-                        deployment=d,
-                    )
-                )
-                for d in deployments
-            }
-        return data
-
     def _get_unit_files(self, unit, extension="nc"):
         """get all processed files associated with one unit"""
         files = sorted(
@@ -850,25 +802,6 @@ def _process_platforms(platforms):
         pfs[p] = pf
 
     return pfs
-
-
-def _load_processed_file(file, **kwargs):
-    """load preprocessed file, select object type based on filename"""
-    if "_gps_" in file or "_iridium" in file:
-        from .gps import gps
-
-        return gps(file=file)
-    elif "emission" in file:
-        from .source import source_rtsys
-
-        return source_rtsys(file=file)
-    elif "ctd" in file:
-        from .ctd import ctd
-
-        return ctd(file=file)
-    else:
-        return file + " not loaded"
-
 
 def _extract_last_digit(filename):
     """extract last digit prior to extension in filename"""

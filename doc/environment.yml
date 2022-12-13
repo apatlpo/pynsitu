@@ -4,33 +4,16 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.9
   - xarray
-#  - pyproj
-#  - zarr
-#  - netcdf4
-#  - geopandas
-#  - hvplot
-#  - seaborn
-#  - cartopy
-#  - geoviews
-#  - folium
-#  - cmocean
-#  - xrft
-#  - gsw
-#  - pyinterp
-#  - pytide
-#  - pyTMD
   - numpydoc
   - sphinx
-#  - ipython
-#  - jupyter
+  - ipython
+  - jupyter
   - matplotlib
   - pandoc
   - pip
   - pip:
-#    - pynmea2
-#    - geojsoncontour
     - docrep
     - nbsphinx
     - sphinxcontrib-apidoc

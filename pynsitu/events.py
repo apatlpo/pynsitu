@@ -3,7 +3,6 @@
 #
 import os
 from glob import glob
-import yaml
 from collections import UserDict
 import re
 
@@ -275,6 +274,7 @@ class Campaign(object):
     def __init__(self, file, verbose=True):
 
         # open yaml information file
+        import yaml
         if ".yaml" not in file:
             file = file + ".yaml"
         with open(file, "r") as stream:

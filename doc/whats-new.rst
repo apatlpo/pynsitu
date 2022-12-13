@@ -5,10 +5,10 @@ What's New
 
 .. _whats-new.0.0.0:
 
-v0.2.0 (10 April 2019)
+v0.0.0 (XX January 2022)
 ----------------------
 
-Enhancements
+Enhancements (to be updated)
 ~~~~~~~~~~~~
 
 - Allowed ``dft`` and ``power_spectrum`` functions to support real Fourier transforms. (:issue:`57`)
@@ -17,9 +17,6 @@ Enhancements
 
 - Implemented ``cross_phase`` function to calculate the phase difference between two signals as a function of frequency.
   By `Tom Nicholas <https://github.com/TomNicholas>`_.
-
-- Allowed ``isotropic_powerspectrum`` function to support arrays with up to four dimensions. (:issue:`9`)
-  By `Takaya Uchida <https://github.com/roxyboy>`_
 
 .. warning::
 

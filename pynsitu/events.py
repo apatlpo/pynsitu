@@ -80,15 +80,12 @@ class Event(object):
 
 
 class Deployment(object):
-    """An deployment describes data collection during a continuous stretch of
+    """A deployment describes data collection during a continuous stretch of
     time and is thus described by:
         - a label
         - a start event (see class event`)
         - an end event (see class `event`)
-        - an meta dictionnary containing various pieces of information
-
-    It contains four elementary information:
-            label, longitude, latitude, time
+        - a meta dictionnary containing various pieces of information
     """
 
     def __init__(self, label, start=None, end=None, meta=None, loglines=None):
@@ -123,17 +120,23 @@ class Deployment(object):
         if not isinstance(start, Event):
             self.start = Event(label="start", logline=start)
         #
-        if end is None:
+        if end is None and loglines is not None:
             end = loglines[1]
-        if not isinstance(end, Event):
-            self.end = Event(label="end", logline=end)
+        if end is not None:
+            end = Event(label="end", logline=end)
+        self.end = end
 
         if meta is None:
             if len(loglines) == 3:
-                meta = loglines[2]["info"]
+                meta = loglines[2]
             else:
                 meta = dict()
         self.meta = dict(**meta)
+
+    def __getitem__(self, key):
+        if key in self.meta:
+            return self.meta[key]
+        return getattr(self, key)
 
     def __repr__(self):
         return "cognac.insitu.events.deployment({})".format(str(self))
@@ -188,41 +191,6 @@ class Deployment(object):
         return
 
 
-class dictskip(object):
-    """Dict like object that treats some parameters (those in `skip` list)
-    as attributes.
-    """
-
-    def __init__(self, *args, **kwargs):
-        self._dict = dict(*args, **kwargs)
-        self._skip = [
-            "label",
-        ]
-
-    def __contains__(self, item):
-        return item in self._dict
-
-    def __bool__(self):
-        return bool([d for d in self])
-
-    def __getitem__(self, key):
-        return self._dict[key]
-
-    def __setitem__(self, key, value):
-        self._dict[key] = value
-
-    def __iter__(self):
-        for key, value in self._dict.items():
-            if key not in self._skip:
-                yield value
-
-    def __repr__(self):
-        return "cognac.insitu.events.unit({})".format(str(self))
-
-    def __str__(self):
-        return self["label"] + "\n" + "\n".join(str(d) for d in self)
-
-
 class Deployments(UserDict):
     """deployement dictionnary, provides shortcuts to access data in meta subdicts, e.g.:
     p = deployments(meta=dict(a=1))
@@ -268,12 +236,12 @@ class Platform(UserDict):
 class Campaign(object):
     """Campaign object, gathers deployments information from a yaml file"""
 
-    def __init__(self, file, verbose=True):
+    def __init__(self, file):
 
         # open yaml information file
         import yaml
 
-        if ".yaml" not in file:
+        if ".yaml" not in file and ".yml" not in file:
             file = file + ".yaml"
         with open(file, "r") as stream:
             cp = yaml.full_load(stream)
@@ -284,7 +252,6 @@ class Campaign(object):
 
         # deployments
         if "deployments" in cp:
-            print(cp["deployments"])
             self.deployments = Deployments(
                 {
                     d: Deployment(label=d, **v) if d != "meta" else v
@@ -802,6 +769,7 @@ def _process_platforms(platforms):
         pfs[p] = pf
 
     return pfs
+
 
 def _extract_last_digit(filename):
     """extract last digit prior to extension in filename"""

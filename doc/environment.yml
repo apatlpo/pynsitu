@@ -1,6 +1,5 @@
 name: pynsitu
 channels:
-#  - pyviz
   - conda-forge
   - defaults
 dependencies:

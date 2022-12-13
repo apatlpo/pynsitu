@@ -31,10 +31,7 @@ Documentation
    :maxdepth: 1
    :caption: Examples
 
-   DFT-iDFT_example
-   Parseval_example
-   chunk_example
-   MITgcm_example
+   example_events
 
 .. toctree::
    :maxdepth: 1

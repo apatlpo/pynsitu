@@ -42,6 +42,44 @@ def test_events_str():
     assert str(e) == "label 2016-02-09 05:35:00 7.29 43.33"
 
 
+## deployment
+
+
+def test_deployment_instantiation():
+    """test creation of deployment objects"""
+
+    _start = "02/09/2016 05:35:00 7 17.124 43 19.866"
+    _end = "02/09/2016 05:35:00 7 17.124 43 19.866"
+    _meta = dict(color="k", info="toto")
+
+    d = pyn.events.Deployment(
+        "label",
+        start=_start,
+        end=_end,
+        meta=_meta,
+    )
+    assert d.label == "label"
+    assert d["label"] == "label"
+    assert d.start.time == pd.to_datetime("02/09/2016 05:35:00")
+    assert d.start.lon == 7 + 17.124 / 60
+    assert d.start.lat == 43 + 19.866 / 60
+
+    _loglines = [
+        _start,
+        _end,
+    ]
+    d = pyn.events.Deployment(
+        "label",
+        loglines=_loglines,
+    )
+
+    _loglines = [_start, _end, _meta]
+    d = pyn.events.Deployment(
+        "label",
+        loglines=_loglines,
+    )
+
+
 ## campaign class
 
 

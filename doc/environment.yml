@@ -16,3 +16,7 @@ dependencies:
     - docrep
     - nbsphinx
     - sphinxcontrib-apidoc
+    - pangeo-sphinx-book-theme
+    - sphinx-copybutton
+    - sphinxcontrib-srclinks
+    - sphinx-panels

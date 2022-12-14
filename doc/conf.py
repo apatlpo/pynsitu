@@ -42,6 +42,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinxcontrib.apidoc",
+    "sphinx_copybutton",
+    "sphinx_panels",
     "numpydoc",
     "nbsphinx",
     "IPython.sphinxext.ipython_console_highlighting",

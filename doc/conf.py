@@ -108,12 +108,21 @@ todo_include_todos = False
 #
 # html_theme = "sphinx_rtd_theme"
 # html_theme = 'alabaster'
+html_theme = "sphinx_book_theme"
+# inspiration: https://github.com/xgcm/xgcm/blob/master/doc/conf.py
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {
+    "repository_url": "https://github.com/apatlpo/pynsitu",
+    "repository_branch": "master",
+    "path_to_docs": "doc",
+    "use_repository_button": True,
+    "use_issues_button": True,
+    "use_edit_page_button": True,
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

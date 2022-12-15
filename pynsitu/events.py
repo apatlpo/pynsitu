@@ -291,24 +291,55 @@ class Campaign(object):
         for key in list(self.deployments) + list(self.platforms):
             yield key
 
-    def items(self):
-        """loops around deployments and platforms, useful?"""
-        for key, value in {**self.deployments, **self.platforms}.items():
-            yield key, value
+    def get_all_deployments(self, meta=False):
+        """loops over all deployments, e.g.:
+        for label, d in cp.get_all_deployments()
+            ...
 
-    def plot_map(self, **kwargs):
+        Parameters
+        ----------
+        meta: boolean
+            Add meta (with inheritance) (default if False)
+        
+        """
+        for key, value in self.deployments.items():
+            if meta:
+                yield key, value, value.meta
+            else:
+                yield key, value
+        for p, vp in self.platforms.items():
+            if vp["deployments"]:
+                for d, vd in vp["deployments"].items():
+                    _meta = dict(**vp["meta"])
+                    _meta.update(**vd.meta)
+                    if meta:
+                        yield p+"/"+d, vd, _meta
+                    else:
+                        yield p+"/"+d, vd
+            if vp["sensors"]:
+                _meta = dict(**vp["meta"])
+                for s, vs in vp["sensors"].items():
+                    _meta.update(**vs.meta)
+                    for d, vd in vs.items():
+                        if meta:
+                            yield p+"/"+s+"/"+d, vd, _meta
+                        else:
+                            yield p+"/"+s+"/"+d, vd
+
+
+    def plot_map(self, bathy=None, **kwargs):
         """Plot map
         Wrapper around geo.plot_map, see related doc
         """
+        if bathy is None and "bathy" in self.meta and "path" in self["bathy"]:
+            bathy=self["bathy"]["path"]
         dkwargs = dict(
-            bounds=self["bounds"],
-            # bathy=self.bathy['label'],
+            extent=self["bounds"],
+            bathy=bathy,
             levels=self["bathy"]["levels"],
         )
-        # dkwargs.update((k,v) for k,v in kwargs.items() if v is not None)
-        dkwargs.update(kwargs)
-        fac = plot_map(cp=self, **dkwargs)
-        plot_bathy(fac, bathy=self["bathy"]["label"], **dkwargs)
+        dkwargs.update(**kwargs)
+        fac = plot_map(**dkwargs)
         return fac
 
     def map(
@@ -316,10 +347,9 @@ class Campaign(object):
         width="70%",
         height="70%",
         tiles="Cartodb Positron",
-        ignore=[],
+        ignore=None,
         overwrite_contours=False,
         zoom=10,
-        **kwargs,
     ):
         """Plot overview map with folium
 
@@ -341,7 +371,7 @@ class Campaign(object):
         from folium.plugins import MeasureControl, MousePosition
 
         if ignore == "all":
-            ignore = list(self.deployments) + self(self.platforms)
+            ignore = [d for d, _ in self.get_all_deployments()]
 
         m = folium.Map(
             location=[self["lat_mid"], self["lon_mid"]],
@@ -357,10 +387,10 @@ class Campaign(object):
             os.path.isfile(contour_file) and overwrite_contours
         ):
             store_bathy_contours(
-                self.bathy["label"],
+                self["bathy"]["path"],
                 contour_file=contour_file,
-                levels=self.bathy["levels"],
-                bounds=self.bounds,
+                levels=self["bathy"]["levels"],
+                bounds=self["bounds"],
             )
         contours_geojson = load_bathy_contours(contour_file)
 
@@ -393,36 +423,37 @@ class Campaign(object):
         ).add_to(m)
 
         # campaign details
-        for uname, u in self.items():
-            if uname not in ignore:
-                for d in u:
-                    if d.start.lat is None:
-                        continue
-                    folium.Polygon(
-                        [(d.start.lat, d.start.lon), (d.end.lat, d.end.lon)],
-                        tooltip=uname
-                        + " "
-                        + d.label
-                        + "<br>"
-                        + str(d.start.time)
-                        + "<br>"
-                        + str(d.end.time),
-                        color=cnames[u["color"]],
-                        dash_array="10 20",
-                        opacity=0.5,
-                    ).add_to(m)
-                    folium.Circle(
-                        (d.start.lat, d.start.lon),
-                        tooltip=uname + " " + d.label + "<br>" + str(d.start.time),
-                        radius=2 * 1e2,
-                        color=cnames[u["color"]],
-                    ).add_to(m)
-                    folium.Circle(
-                        (d.end.lat, d.end.lon),
-                        tooltip=uname + " " + d.label + "<br>" + str(d.end.time),
-                        radius=1e2,
-                        color=cnames[u["color"]],
-                    ).add_to(m)
+        for label, d, meta in self.get_all_deployments(meta=True):
+            if "color" in meta:
+                color = meta["color"]
+            else:
+                color = "black"
+            if ignore is None or label not in ignore:
+                if d.start.lat is None:
+                    continue
+                folium.Polygon(
+                    [(d.start.lat, d.start.lon), (d.end.lat, d.end.lon)],
+                    tooltip=label
+                    + "<br>"
+                    + str(d.start.time)
+                    + "<br>"
+                    + str(d.end.time),
+                    color=cnames[color],
+                    dash_array="10 20",
+                    opacity=0.5,
+                ).add_to(m)
+                folium.Circle(
+                    (d.start.lat, d.start.lon),
+                    tooltip=label + "<br>" + str(d.start.time),
+                    radius=2 * 1e2,
+                    color=cnames[color],
+                ).add_to(m)
+                folium.Circle(
+                    (d.end.lat, d.end.lon),
+                    tooltip=label + "<br>" + str(d.end.time),
+                    radius=1e2,
+                    color=cnames[color],
+                ).add_to(m)
 
         # useful plugins
 
@@ -492,7 +523,6 @@ class Campaign(object):
                     color_txt = "w"
                 else:
                     color_txt = "k"
-                print(color_txt)
                 ax.text(start, y, label, va="center", color=color_txt)
 
         # common deployments
@@ -550,7 +580,7 @@ class Campaign(object):
             ]
         )
         plt.ylim([y + 1 - 2 * height, 2 * height])
-        print(y, y + 1 - 2 * height)
+        
         return ax
 
     def add_legend(

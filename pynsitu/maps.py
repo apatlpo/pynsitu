@@ -20,124 +20,7 @@ try:
 except:
     print("Warning: could not import cartopy")
 
-default_resolution = "10m"
-
-
-def plot_map_tmp(
-    fig=None,
-    region=None,
-    coast="110m",
-    land="110m",
-    rivers="110m",
-    figsize=(10, 10),
-    bounds=None,
-    cp=None,
-    grid_linewidth=1,
-    **kwargs,
-):
-    """Plot a map of the campaign area
-
-    Parameters
-    ----------
-    fig: matplotlib.figure.Figure, optional
-        Figure handle, create one if not passed
-    coast: str, optional
-        Determines which coast dataset to use, e.g. ['10m', '50m', '110m']
-    bounds: list, optional
-        Geographical bounds, e.g. [lon_min, lon_max, lat_min, lat_max]
-    cp: cognac.utils.campaign, optional
-        Campaign object
-    grid_linewidth: float, optional
-        geographical grid line width
-    """
-    crs = ccrs.PlateCarree()
-
-    if fig is None:
-        fig = plt.figure(figsize=figsize)
-    else:
-        fig.clf()
-
-    if bounds is None:
-        if cp is not None:
-            bounds = cp.bounds
-        else:
-            assert False, "bounds need to be provided somehow"
-
-    ax = fig.add_subplot(111, projection=crs)
-    ax.set_extent(bounds, crs=crs)
-    gl = ax.gridlines(
-        crs=crs,
-        draw_labels=True,
-        linewidth=grid_linewidth,
-        color="k",
-        alpha=0.5,
-        linestyle="--",
-    )
-    gl.xlabels_top = False
-    gl.ylabels_right = False
-
-    # overrides kwargs for regions
-    if region:
-        coast = region
-        land = region
-        rivers = region
-
-    #
-    _coast_root = os.getenv("HOME") + "/data/coastlines/"
-    coast_kwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=-1)
-    if coast in ["10m", "50m", "110m"]:
-        ax.coastlines(resolution=coast, color="k")
-    elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
-        shpfile = shapereader.gshhs("h")
-        shp = shapereader.Reader(shpfile)
-        ax.add_geometries(shp.geometries(), crs, **coast_kwargs)
-    elif coast == "bseine":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-    elif coast == "med":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "med/med_coast.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-    elif coast == "med_high":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "/med/med_high_coast.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-
-    #
-    _land_kwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
-    if land in ["10m", "50m", "110m"]:
-        land = cfeature.NaturalEarthFeature("physical", "land", land, **_land_kwargs)
-        # ax.add_feature(cfeature.LAND)
-        ax.add_feature(land)
-    elif land == "bseine":
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_land.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **_land_kwargs)
-
-    #
-    _rivers_kwargs = dict(facecolor="none", edgecolor="blue")  # , zorder=-1
-    if rivers in ["10m", "50m", "110m"]:
-        rivers = cfeature.NaturalEarthFeature(
-            "physical", "rivers_lake_centerlines", rivers, **_rivers_kwargs
-        )
-        ax.add_feature(cfeature.RIVERS)
-    elif rivers == "bseine":
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_rivers.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **_rivers_kwargs)
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_water.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, facecolor="blue", edgecolor="none")
-
-    # need to perform once more
-    ax.set_extent(bounds, crs=crs)
-
-    return [fig, ax, crs]
-
+# ------------------------------ cartopy map -----------------------------
 
 def plot_map(
     da=None,
@@ -145,30 +28,59 @@ def plot_map(
     projection=None,
     title=None,
     fig=None,
+    figsize=None,
     ax=None,
     colorbar=True,
     colorbar_kwargs={},
-    center_colormap=False,
+    centered_clims=False,
     gridlines=True,
-    dticks=(1, 1),
     bathy=False,
     bathy_levels=None,
-    land=True,
-    coast_resolution=None,
-    offline=False,
-    figsize=0,
+    land=False,
+    coastline="110m",
+    rivers=False,
     **kwargs,
 ):
+    """ Plot a geographical map
+
+    Parameters
+    ----------
+    da: xr.DataArray, optional
+        Scalar field to plot
+    extent: str, list/tuple, optional
+        Geographical extent, "global" or [lon_min, lon_max, lat_min, lat_max]
+    projection: cartopy.crs.??, optional
+        Cartopy projection, e.g.: `projection = ccrs.Robinson()`
+    title: str, optional
+        Title
+    fig: matplotlib.figure.Figure, optional
+        Figure handle, create one if not passed
+    figsize: tuple, optional
+        Figure size, e.g. (10,5)
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    colorbar: boolean, optional
+        add colorbar (default is True)
+    colorbar_kwargs: dict, optional
+        kwargs passed to colorbar
+    centered_clims: boolean, optional
+        Center color limits (default is False)
+    gridlines: boolean, optional
+        Add grid lines (default is True)
+    bathy: boolean, optional
+        Plot bathymetry (default is False)
+    bathy_levels: list/tuple
+        Levels of bathymetry to plot
+    land: boolean, optional
+        (default is True)
+    coast_resolution: str, optional
+    """
 
     #
-    if figsize == 0:
-        _figsize = (10, 5)
-    elif figsize == 1:
-        _figsize = (20, 10)
-    else:
-        _figsize = figsize
+    if figsize is None:
+        figsize = (10, 5)
     if fig is None:
-        fig = plt.figure(figsize=_figsize)
+        fig = plt.figure(figsize=figsize)
     if extent == "global":
         proj = ccrs.Robinson()
         extent = None
@@ -185,17 +97,20 @@ def plot_map(
     if ax is None:
         ax = fig.add_subplot(111, projection=proj)
 
+    if extent is not None:
+        ax.set_extent(extent)
+
     # copy kwargs for update
     kwargs = kwargs.copy()
 
-    if center_colormap and da is not None:
+    if centered_clims and da is not None:
         vmax = float(abs(da).max())
         vmin = -vmax
         kwargs["vmin"] = vmin
         kwargs["vmax"] = vmax
 
     if bathy:
-        da = load_bathy(bathy)["depth"]
+        da = load_bathy(bathy, bounds=extent)["depth"]
         if bathy_levels is not None:
             CS = da.plot.contour(
                 x="longitude",
@@ -220,31 +135,13 @@ def plot_map(
             **kwargs,
         )
 
-    set_extent = False
-    if isinstance(extent, list) or isinstance(extent, tuple):
-        set_extent = True
-
     # coastlines and land:
     if land:
-        dland = dict(
-            scale=default_resolution,
-            edgecolor="face",
-            facecolor=cfeature.COLORS["land"],
-        )
-        if isinstance(land, dict):
-            dland.update(**land)
-            # land = dict(args=['physical', 'land', '10m'],
-            #            kwargs= dict(edgecolor='face', facecolor=cfeature.COLORS['land']),
-            #           )
-        land_feature = cfeature.NaturalEarthFeature("physical", "land", **dland)
-        # else:
-        #    land_feature = cfeature.LAND
-        ax.add_feature(land_feature, zorder=0)
-    if coast_resolution is not None:
-        ax.coastlines(resolution=coast_resolution, color="k")
-
-    if set_extent:
-        ax.set_extent(extent)
+        _plot_land(ax, land)
+    if coastline:
+        _plot_coastline(ax, coastline)
+    if rivers:
+        _plot_rivers(ax, rivers)
 
     if da is not None and colorbar:
         # cbar = fig.colorbar(im, extend="neither", shrink=0.7, **colorbar_kwargs)
@@ -282,6 +179,57 @@ def plot_map(
     #
     return {"fig": fig, "ax": ax, "cbar": cbar}
 
+def _plot_land(ax, land, **kwargs):
+    """plot land"""
+    dkwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
+    dkwargs.update(**kwargs)
+    if isinstance(land, bool) and land:
+        land="50m"
+    if land in ["10m", "50m", "110m"]:
+        land = cfeature.NaturalEarthFeature("physical", "land", land, **dkwargs)
+        # ax.add_feature(cfeature.LAND)
+        ax.add_feature(land)
+    elif isinstance(land, str):
+        shp = shapereader.Reader(land)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, zorder=0, **dkwargs)
+
+def _plot_coastline(ax, coast, **kwargs):
+    """plot coastline"""
+    dkwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=5)
+    dkwargs.update(**kwargs)
+    if isinstance(coast, bool) and coast:
+        coast="50m"
+    if coast in ["10m", "50m", "110m"]:
+        ax.coastlines(resolution=coast, color="k")
+    #elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
+    elif coast in ["c", "l", "i", "h", "f"]:
+        # ["coarse", "low", "intermediate", "high", "full"]
+        shpfile = shapereader.gshhs(coast)
+        shp = shapereader.Reader(shpfile)
+        ax.add_geometries(shp.geometries(), crs, **dkwargs)
+    elif isinstance(coast, str):
+        # for production, see: /Users/aponte/Data/coastlines/log
+        shp = shapereader.Reader(coast)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, **dkwargs)
+
+def _plot_rivers(ax, rivers, **kwargs):
+    """plot rivers"""
+    dkwargs = dict(facecolor="blue", edgecolor="blue", zorder=6)
+    dkwargs.update(**kwargs)
+    if isinstance(rivers, bool) and rivers:
+        rivers="50m"
+    if rivers in ["10m", "50m", "110m"]:
+        rivers = cfeature.NaturalEarthFeature(
+            "physical", "rivers_lake_centerlines", rivers, **dkwargs
+        )
+        ax.add_feature(cfeature.RIVERS)
+    elif isinstance(rivers, str):
+        shp = shapereader.Reader(rivers)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, **dkwargs)
+
 
 # ------------------------------ bathymetry -----------------------------
 
@@ -290,7 +238,6 @@ _bathy_etopo1 = os.path.join(
     os.getenv("HOME"),
     "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
 )
-
 
 def load_bathy(bathy, bounds=None, steps=None, land=False):
     """Load bathymetry

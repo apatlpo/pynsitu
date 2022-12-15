@@ -13,8 +13,10 @@ campaign:
   start: 2022-09-21 05:00:00
   end: 2022-09-25 18:00:00
   bathy:
-    label: "/Users/aponte/Data/bathy/med_gebco0/gebco_2022_n43.932_s41.3124_w2.0025_e7.6744.nc"
+    path: "/Users/aponte/Data/bathy/med_gebco0/gebco_2022_n43.932_s41.3124_w2.0025_e7.6744.nc"
+    label: "gebco_mediterrane_extract"
     levels: !!python/list [2000, 1500, 1000, 500, 100, 50]
+  coastline: "h"
 # ------------------------------- general deployments / campaign parts ----------------------------------
 deployments:
   underway:
@@ -41,7 +43,7 @@ platforms:
     meta:
       model: RBR duet + RBR solo
       serial_number: 082218 200470
-      color: "0.5"
+      color: lightgrey
 #
 #
   europe:

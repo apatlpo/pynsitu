@@ -22,6 +22,7 @@ except:
 
 # ------------------------------ cartopy map -----------------------------
 
+
 def plot_map(
     da=None,
     extent="global",
@@ -41,7 +42,7 @@ def plot_map(
     rivers=False,
     **kwargs,
 ):
-    """ Plot a geographical map
+    """Plot a geographical map
 
     Parameters
     ----------
@@ -179,12 +180,13 @@ def plot_map(
     #
     return {"fig": fig, "ax": ax, "cbar": cbar}
 
+
 def _plot_land(ax, land, **kwargs):
     """plot land"""
     dkwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
     dkwargs.update(**kwargs)
     if isinstance(land, bool) and land:
-        land="50m"
+        land = "50m"
     if land in ["10m", "50m", "110m"]:
         land = cfeature.NaturalEarthFeature("physical", "land", land, **dkwargs)
         # ax.add_feature(cfeature.LAND)
@@ -194,15 +196,16 @@ def _plot_land(ax, land, **kwargs):
         for record, geometry in zip(shp.records(), shp.geometries()):
             ax.add_geometries([geometry], crs, zorder=0, **dkwargs)
 
+
 def _plot_coastline(ax, coast, **kwargs):
     """plot coastline"""
     dkwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=5)
     dkwargs.update(**kwargs)
     if isinstance(coast, bool) and coast:
-        coast="50m"
+        coast = "50m"
     if coast in ["10m", "50m", "110m"]:
         ax.coastlines(resolution=coast, color="k")
-    #elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
+    # elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
     elif coast in ["c", "l", "i", "h", "f"]:
         # ["coarse", "low", "intermediate", "high", "full"]
         shpfile = shapereader.gshhs(coast)
@@ -214,12 +217,13 @@ def _plot_coastline(ax, coast, **kwargs):
         for record, geometry in zip(shp.records(), shp.geometries()):
             ax.add_geometries([geometry], crs, **dkwargs)
 
+
 def _plot_rivers(ax, rivers, **kwargs):
     """plot rivers"""
     dkwargs = dict(facecolor="blue", edgecolor="blue", zorder=6)
     dkwargs.update(**kwargs)
     if isinstance(rivers, bool) and rivers:
-        rivers="50m"
+        rivers = "50m"
     if rivers in ["10m", "50m", "110m"]:
         rivers = cfeature.NaturalEarthFeature(
             "physical", "rivers_lake_centerlines", rivers, **dkwargs
@@ -238,6 +242,7 @@ _bathy_etopo1 = os.path.join(
     os.getenv("HOME"),
     "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
 )
+
 
 def load_bathy(bathy, bounds=None, steps=None, land=False):
     """Load bathymetry

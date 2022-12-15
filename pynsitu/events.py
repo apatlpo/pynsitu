@@ -300,7 +300,7 @@ class Campaign(object):
         ----------
         meta: boolean
             Add meta (with inheritance) (default if False)
-        
+
         """
         for key, value in self.deployments.items():
             if meta:
@@ -313,26 +313,25 @@ class Campaign(object):
                     _meta = dict(**vp["meta"])
                     _meta.update(**vd.meta)
                     if meta:
-                        yield p+"/"+d, vd, _meta
+                        yield p + "/" + d, vd, _meta
                     else:
-                        yield p+"/"+d, vd
+                        yield p + "/" + d, vd
             if vp["sensors"]:
                 _meta = dict(**vp["meta"])
                 for s, vs in vp["sensors"].items():
                     _meta.update(**vs.meta)
                     for d, vd in vs.items():
                         if meta:
-                            yield p+"/"+s+"/"+d, vd, _meta
+                            yield p + "/" + s + "/" + d, vd, _meta
                         else:
-                            yield p+"/"+s+"/"+d, vd
-
+                            yield p + "/" + s + "/" + d, vd
 
     def plot_map(self, bathy=None, **kwargs):
         """Plot map
         Wrapper around geo.plot_map, see related doc
         """
         if bathy is None and "bathy" in self.meta and "path" in self["bathy"]:
-            bathy=self["bathy"]["path"]
+            bathy = self["bathy"]["path"]
         dkwargs = dict(
             extent=self["bounds"],
             bathy=bathy,
@@ -580,7 +579,7 @@ class Campaign(object):
             ]
         )
         plt.ylim([y + 1 - 2 * height, 2 * height])
-        
+
         return ax
 
     def add_legend(

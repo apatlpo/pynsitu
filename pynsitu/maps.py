@@ -255,6 +255,12 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
         Bounds to be selected (lon_min, lon_max, lat_min, lat_max)
     steps: list, tuple, optional
         subsampling steps (di_lon, di_lat)
+
+    Returns
+    -------
+    ds: xr.Dataset
+        Dataset containing variables elevation and depth (=-elevation)
+
     """
     if bathy == "etopo1":
         ds = xr.open_dataset(_bathy_etopo1)
@@ -313,7 +319,7 @@ def plot_bathy(
     cs = ax.contour(
         ds.lon,
         ds.lat,
-        ds.elevation,
+        ds.depth,
         levels,
         linestyles="-",
         colors="black",
@@ -334,7 +340,7 @@ def store_bathy_contours(
     """
 
     # Create contour data lon_range, lat_range, Z
-    depth = load_bathy(bathy, **kwargs)["elevation"]
+    depth = load_bathy(bathy, **kwargs)["depth"]
     if isinstance(levels, tuple):
         levels = np.arange(*levels)
     contours = depth.plot.contour(levels=levels, cmap="gray_r")

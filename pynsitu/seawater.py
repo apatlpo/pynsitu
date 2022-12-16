@@ -243,7 +243,7 @@ class PdSeawaterAccessor:
         rule=None,
         plot_width=400,
     ):
-        """ Bokeh plot, useful to clean data
+        """Bokeh plot, useful to clean data
 
         Parameters
         ----------
@@ -268,8 +268,10 @@ class PdSeawaterAccessor:
         lw, c = 3, "black"
 
         from .events import Deployment
+
         if deployments is not None:
             from .events import Deployment
+
             if isinstance(deployments, Deployment):
                 deployments = deployments.to_deployments()
 

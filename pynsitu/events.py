@@ -143,7 +143,7 @@ class Deployment(object):
         return self.label + " / " + str(self.start) + " / " + str(self.end)
 
     def to_deployments(self):
-        """ converts to deployments object """
+        """converts to deployments object"""
         return Deployments(**{self.label: self})
 
     def plot_on_map(

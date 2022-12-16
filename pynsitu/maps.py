@@ -18,6 +18,7 @@ try:
 
     crs = ccrs.PlateCarree()
 except:
+    crs = None
     print("Warning: could not import cartopy")
 
 # ------------------------------ cartopy map -----------------------------
@@ -114,7 +115,7 @@ def plot_map(
     if bathy:
         da = load_bathy(bathy, bounds=extent)["depth"]
         if bathy_levels is not None:
-            if len(bathy_levels)==3:
+            if len(bathy_levels) == 3:
                 bathy_levels = np.arange(*bathy_levels)
             CS = da.plot.contour(
                 x="longitude",

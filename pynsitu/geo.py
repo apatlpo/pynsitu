@@ -374,7 +374,7 @@ class GeoAccessor:
         velocity=False,
         acceleration=False,
     ):
-        """ Bokeh plot, useful to clean data
+        """Bokeh plot, useful to clean data
 
         Parameters
         ----------
@@ -422,6 +422,7 @@ class GeoAccessor:
         lw, c = 3, "black"
 
         from .events import Deployment
+
         if deployments is not None:
             if isinstance(deployments, Deployment):
                 deployments = deployments.to_deployments()
@@ -564,7 +565,7 @@ class GeoAccessor:
                     mode="vline",
                 )
             )
-            _add_start_end(s4, -df["acceleration"], ymax = df["acceleration"])
+            _add_start_end(s4, -df["acceleration"], ymax=df["acceleration"])
             s4.add_tools(crosshair)
             S.append(s4)
         #

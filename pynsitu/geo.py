@@ -368,18 +368,20 @@ class GeoAccessor:
 
     def plot_bokeh(
         self,
-        unit=None,
+        deployments=None,
         rule=None,
         mindec=True,
         velocity=False,
         acceleration=False,
     ):
-        """bokeh plot
+        """ Bokeh plot, useful to clean data
 
         Parameters
         ----------
-        unit:
-        rule:
+        deployments: dict-like, pynsitu.events.Deployments for instance, optional
+            Deployments
+        rule: str, optional
+            resampling rule
         mindec: boolean
             Plot longitude and latitude as minute/decimals
         """
@@ -419,25 +421,31 @@ class GeoAccessor:
         # line specs
         lw, c = 3, "black"
 
+        from .events import Deployment
+        if deployments is not None:
+            if isinstance(deployments, Deployment):
+                deployments = deployments.to_deployments()
+
         def _add_start_end(s, ymin, ymax=None):
             """add deployments start and end as colored vertical bars"""
             # _y = y.iloc[y.index.get_loc(_d.start.time), method='nearest')]
-            if not isinstance(ymin, float):
-                ymin = ymin.min()
             if ymax is None:
                 ymax = ymin.max()
             elif not isinstance(ymax, float):
                 ymax = ymax.max()
-            if unit is not None:
-                for _d in unit:
+            if not isinstance(ymin, float):
+                ymin = ymin.min()
+            print(ymin, ymax)
+            if deployments is not None:
+                for label, d in deployments.items():
                     s.line(
-                        x=[_d.start.time, _d.start.time],
+                        x=[d.start.time, d.start.time],
                         y=[ymin, ymax],
                         color="cadetblue",
                         line_width=2,
                     )
                     s.line(
-                        x=[_d.end.time, _d.end.time],
+                        x=[d.end.time, d.end.time],
                         y=[ymin, ymax],
                         color="salmon",
                         line_width=2,
@@ -556,7 +564,7 @@ class GeoAccessor:
                     mode="vline",
                 )
             )
-            _add_start_end(s4, df["acceleration"])
+            _add_start_end(s4, -df["acceleration"], ymax = df["acceleration"])
             s4.add_tools(crosshair)
             S.append(s4)
         #

@@ -18,10 +18,10 @@ campaign:
   end: 2022-09-25 18:00:00
   # bathymetric data and configuration
   bathy:
-    path: "/Users/aponte/Data/bathy/med_gebco0/gebco_2022_n43.932_s41.3124_w2.0025_e7.6744.nc"
-    label: "gebco_mediterrane_extract"
+    path: /Users/aponte/Data/bathy/med_gebco0/gebco_2022_n43.932_s41.3124_w2.0025_e7.6744.nc
+    label: gebco_mediterrane_extract
     levels: !!python/list [2000, 1500, 1000, 500, 100, 50]
-  coastline: "h"
+  coastline: h
 # ------------------------------- general deployments / campaign parts ----------------------------------
 #
 # Deployments can also be used to mark positions or isolated events

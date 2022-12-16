@@ -239,17 +239,20 @@ class PdSeawaterAccessor:
 
     def plot_bokeh(
         self,
-        unit=None,
+        deployments=None,
         rule=None,
         plot_width=400,
-        cross=False,
     ):
-        """bokeh plot
+        """ Bokeh plot, useful to clean data
 
         Parameters
         ----------
-        unit:
-        rule:
+        deployments: dict-like, pynsitu.events.Deployments for instance, optional
+            Deployments
+        rule: str, optional
+            resampling rule
+        plot_width: int
+            Plot width in pixels
         """
 
         if rule is not None:
@@ -264,18 +267,24 @@ class PdSeawaterAccessor:
         # line specs
         lw, c = 3, "black"
 
+        from .events import Deployment
+        if deployments is not None:
+            from .events import Deployment
+            if isinstance(deployments, Deployment):
+                deployments = deployments.to_deployments()
+
         def _add_start_end(s, y):
             # _y = y.iloc[y.index.get_loc(_d.start.time), method='nearest')]
-            if unit is not None:
-                for _d in unit:
+            if deployments is not None:
+                for label, d in deployments.items():
                     s.line(
-                        x=[_d.start.time, _d.start.time],
+                        x=[d.start.time, d.start.time],
                         y=[y.min(), y.max()],
                         color="cadetblue",
                         line_width=2,
                     )
                     s.line(
-                        x=[_d.end.time, _d.end.time],
+                        x=[d.end.time, d.end.time],
                         y=[y.min(), y.max()],
                         color="salmon",
                         line_width=2,

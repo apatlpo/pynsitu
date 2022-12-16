@@ -126,7 +126,7 @@ class Deployment(object):
 
         if meta is None:
             if len(loglines) == 3:
-                meta = loglines[2]
+                meta = loglines[2]["meta"]
             else:
                 meta = dict()
         self.meta = dict(**meta)
@@ -141,6 +141,10 @@ class Deployment(object):
 
     def __str__(self):
         return self.label + " / " + str(self.start) + " / " + str(self.end)
+
+    def to_deployments(self):
+        """ converts to deployments object """
+        return Deployments(**{self.label: self})
 
     def plot_on_map(
         self,
@@ -195,7 +199,7 @@ class Deployment(object):
 
 class Deployments(UserDict):
     """deployement dictionnary, provides shortcuts to access data in meta subdicts, e.g.:
-    p = deployments(meta=dict(a=1))
+    p = Deployments(meta=dict(a=1))
     p["a"] # returns 1
     """
 
@@ -260,10 +264,14 @@ class Campaign(object):
                     for d, v in cp["deployments"].items()
                 }
             )
+        else:
+            self.deployments = None
 
         # platforms
         if "platforms" in cp:
             self.platforms = _process_platforms(cp["platforms"])
+        else:
+            self.platforms = None
 
         # dev
         self.cp = cp
@@ -281,16 +289,21 @@ class Campaign(object):
     def __getitem__(self, item):
         if item in self.meta:
             return self.meta[item]
-        elif item in self.deployments:
+        elif self.deployments and item in self.deployments:
             return self.deployments[item]
-        elif item in self.platforms:
+        elif self.platforms and item in self.platforms:
             return self.platforms[item]
         else:
             return None
 
     def __iter__(self):
         """iterates around deployments and platforms"""
-        for key in list(self.deployments) + list(self.platforms):
+        L = []
+        if self.deployments:
+            L += list(self.deployments)
+        if self.platforms:
+            L += list(self.platforms)
+        for key in L:
             yield key
 
     def get_all_deployments(self):
@@ -300,31 +313,39 @@ class Campaign(object):
             ...
 
         """
-        for label, d in self.deployments.items():
-            yield label, d, None, None, d.meta
-        for p, vp in self.platforms.items():
-            if vp["deployments"]:
-                for label, d in vp["deployments"].items():
+        if self.deployments:
+            for label, d in self.deployments.items():
+                yield label, d, None, None, d.meta
+        if self.platforms:
+            for p, vp in self.platforms.items():
+                if vp["deployments"]:
+                    for label, d in vp["deployments"].items():
+                        _meta = dict(**vp["meta"])
+                        _meta.update(**d.meta)
+                        yield label, d, p, None, _meta
+                if vp["sensors"]:
                     _meta = dict(**vp["meta"])
-                    _meta.update(**d.meta)
-                    yield label, d, p, None, _meta
-            if vp["sensors"]:
-                _meta = dict(**vp["meta"])
-                for s, vs in vp["sensors"].items():
-                    _meta.update(**vs.meta)
-                    for label, d in vs.items():
-                        yield label, d, p, s, _meta
+                    for s, vs in vp["sensors"].items():
+                        _meta.update(**vs.meta)
+                        for label, d in vs.items():
+                            yield label, d, p, s, _meta
 
-    def map(self, bathy=None, **kwargs):
+    def map(self, bathy=None, coastline=None, rivers=None, **kwargs):
         """Plot map
         Wrapper around geo.plot_map, see related doc
         """
         if bathy is None and "bathy" in self.meta and "path" in self["bathy"]:
             bathy = self["bathy"]["path"]
+        if coastline is None and "coastline" in self.meta:
+            coastline = self["coastline"]
+        if rivers is None and "rivers" in self.meta:
+            rivers = self["rivers"]
         dkwargs = dict(
             extent=self["bounds"],
             bathy=bathy,
-            levels=self["bathy"]["levels"],
+            bathy_levels=self["bathy"]["levels"],
+            coastline=coastline,
+            rivers=rivers,
         )
         dkwargs.update(**kwargs)
         fac = plot_map(**dkwargs)
@@ -726,8 +747,10 @@ def _process_meta_campaign(cp):
     lon, lat = meta["lon"], meta["lat"]
     if lon and lat:
         # ensure coords are floats
-        meta["lon"] = tuple(float(l) for l in lon)
-        meta["lat"] = tuple(float(l) for l in lat)
+        lon = tuple(float(l) for l in lon)
+        lat = tuple(float(l) for l in lat)
+        meta["lon"] = lon
+        meta["lat"] = lat
         #
         meta["bounds"] = lon + lat
         meta["lon_mid"] = (lon[0] + lon[1]) * 0.5

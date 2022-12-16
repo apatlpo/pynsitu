@@ -114,13 +114,16 @@ def plot_map(
     if bathy:
         da = load_bathy(bathy, bounds=extent)["depth"]
         if bathy_levels is not None:
+            if len(bathy_levels)==3:
+                bathy_levels = np.arange(*bathy_levels)
             CS = da.plot.contour(
                 x="longitude",
                 y="latitude",
                 ax=ax,
                 transform=crs,
                 levels=bathy_levels,
-                colors="k",
+                lw=1,
+                colors="0.5",
             )
             ax.clabel(CS, CS.levels, inline=False, fontsize=10)
             da = None
@@ -179,7 +182,7 @@ def plot_map(
             },
         )  # "fontweight": "bold"
     #
-    return {"fig": fig, "ax": ax, "cbar": cbar}
+    return fig, ax, cbar
 
 
 def _plot_land(ax, land, **kwargs):
@@ -248,7 +251,7 @@ def _plot_rivers(ax, rivers, **kwargs):
         True, ["10m", "50m", "110m"] or path to rivers shapefile
     **kwargs: passed to plotting method
     """
-    dkwargs = dict(facecolor="blue", edgecolor="blue", zorder=6)
+    dkwargs = dict(facecolor="cadetblue", edgecolor="cadetblue", zorder=6)
     dkwargs.update(**kwargs)
     if isinstance(rivers, bool) and rivers:
         rivers = "50m"

@@ -98,15 +98,22 @@ def test_campaign_instantiation():
     # platforms
     print(cp["tide_gauge"])
 
-    for uname, u in cp.items():
-        print(uname, type(u), u)
+    # loop over deployments and platforms
+    for i in cp:
+        print(i, type(cp[i]))
+
+    # loop over all deployments
+    for label, deployment, platform, sensor, meta in cp.get_all_deployments():
+        print(label, platform, sensor)
 
     # plot time line
     cp.timeline()
 
-    # test various features of campaign class
-    # units = [u for u in cp]
-    # assert units[0]=="underway"
+    # plot cartopy
+    cp.map()
+
+    # plot folium
+    cp.map_folium()
 
 
 if __name__ == "__main__":

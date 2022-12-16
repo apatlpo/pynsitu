@@ -4,9 +4,7 @@
 import os
 from glob import glob
 from collections import UserDict
-import re
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 import math
@@ -16,7 +14,7 @@ import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from matplotlib.colors import cnames
 
-from .maps import plot_map, plot_bathy, load_bathy_contours, store_bathy_contours
+from .maps import crs, plot_map, load_bathy_contours, store_bathy_contours
 
 
 class Event(object):
@@ -147,10 +145,10 @@ class Deployment(object):
     def plot_on_map(
         self,
         ax,
-        line=True,
-        label=False,
-        label_yshift=1,
-        s=10,
+        line=False,
+        label=True,
+        label_xyshift=(0.1, 0.1),
+        s=5,
         **kwargs,
     ):
         """Plot deployment on a map
@@ -163,8 +161,8 @@ class Deployment(object):
             Plot a line between start and end
         label: boolean, optional
             Print label (False by default)
-        label_yshift: float, optional
-            Shifts the label in the y direction (1 by default)
+        label_xyshift: tuple, optional
+            Shifts the label in the x and y direction, (.1,.1) by default
         **kwargs: optional
             Passed to pyplot plotting methods, if cartopy is used, one should
             at least pass `transform=ccrs.PlateCarree()`
@@ -172,23 +170,27 @@ class Deployment(object):
         if self.start.lon is None:
             # exits right for deployments that do not have lon/lat info
             return
+        dkwargs = dict(transform=crs)
+        dkwargs.update(**kwargs)
         #
         x0, y0 = self.start.lon, self.start.lat
         x1, y1 = self.end.lon, self.end.lat
         #
-        ax.scatter(x0, y0, s, marker="o", **kwargs)
-        ax.scatter(x1, y1, s, marker="*", **kwargs)
+        ax.scatter(x0, y0, s, marker="o", **dkwargs)
+        ax.scatter(x1, y1, s, marker="*", **dkwargs)
         #
         if line:
-            ax.plot([x0, x1], [y0, y1], "-", **kwargs)
+            ax.plot([x0, x1], [y0, y1], "-", **dkwargs)
         if label:
-            xb, yb = ax.get_xbound(), ax.get_ybound()
-            xoffset = 0.02 * (xb[1] - xb[0])
-            yoffset = 0.02 * (yb[1] - yb[0]) * label_yshift
             if type(label) is not str:
                 label = self.label
-            ax.text(x0 + xoffset, y0 + yoffset, label, fontsize=10)
-        return
+            ax.text(
+                x0 + label_xyshift[0],
+                y0 + label_xyshift[1],
+                label,
+                fontsize=10,
+                transform=crs,
+            )
 
 
 class Deployments(UserDict):
@@ -221,7 +223,7 @@ class Deployments(UserDict):
 
 
 class Platform(UserDict):
-    """platform dictionnary, provides shortcuts to access data in meta, sensors and deployments subdicts, e.g.:
+    """Platform dictionnary, provides shortcuts to access data in meta, sensors and deployments subdicts, e.g.:
     p = platform(sensors=dict(a=1), deployments=dict(b=2))
     p["a"] # returns 1
     """
@@ -291,42 +293,29 @@ class Campaign(object):
         for key in list(self.deployments) + list(self.platforms):
             yield key
 
-    def get_all_deployments(self, meta=False):
+    def get_all_deployments(self):
         """loops over all deployments, e.g.:
-        for label, d in cp.get_all_deployments()
+
+        for label, deployment, platform, sensor, meta in cp.get_all_deployments():
             ...
 
-        Parameters
-        ----------
-        meta: boolean
-            Add meta (with inheritance) (default if False)
-
         """
-        for key, value in self.deployments.items():
-            if meta:
-                yield key, value, value.meta
-            else:
-                yield key, value
+        for label, d in self.deployments.items():
+            yield label, d, None, None, d.meta
         for p, vp in self.platforms.items():
             if vp["deployments"]:
-                for d, vd in vp["deployments"].items():
+                for label, d in vp["deployments"].items():
                     _meta = dict(**vp["meta"])
-                    _meta.update(**vd.meta)
-                    if meta:
-                        yield p + "/" + d, vd, _meta
-                    else:
-                        yield p + "/" + d, vd
+                    _meta.update(**d.meta)
+                    yield label, d, p, None, _meta
             if vp["sensors"]:
                 _meta = dict(**vp["meta"])
                 for s, vs in vp["sensors"].items():
                     _meta.update(**vs.meta)
-                    for d, vd in vs.items():
-                        if meta:
-                            yield p + "/" + s + "/" + d, vd, _meta
-                        else:
-                            yield p + "/" + s + "/" + d, vd
+                    for label, d in vs.items():
+                        yield label, d, p, s, _meta
 
-    def plot_map(self, bathy=None, **kwargs):
+    def map(self, bathy=None, **kwargs):
         """Plot map
         Wrapper around geo.plot_map, see related doc
         """
@@ -341,10 +330,10 @@ class Campaign(object):
         fac = plot_map(**dkwargs)
         return fac
 
-    def map(
+    def map_folium(
         self,
-        width="70%",
-        height="70%",
+        width="100%",
+        height="100%",
         tiles="Cartodb Positron",
         ignore=None,
         overwrite_contours=False,
@@ -354,9 +343,12 @@ class Campaign(object):
 
         Parameters:
         ----------
-
-        tiles: str
-            tiles used, see `folium.Map?``
+        width: str, optional
+            width of the plot
+        height: str, optional
+            height of the plot
+        tiles: str, optional
+            tiles used, see `folium.Map?`` (default is Cartodb Positron)
                 - "OpenStreetMap"
                 - "Mapbox Bright" (Limited levels of zoom for free tiles)
                 - "Mapbox Control Room" (Limited levels of zoom for free tiles)
@@ -364,13 +356,19 @@ class Campaign(object):
                 - "Cloudmade" (Must pass API key)
                 - "Mapbox" (Must pass API key)
                 - "CartoDB" (positron and dark_matter)
-
+        ignore: list, optional
+            Ignore deployment labels
+        overwrite_contours: boolean, optional
+            Overwrite contour file (default is False)
+        zoom: int
+            Folium zoom level, see Folium doc `zoom_start` kwarg
+            https://python-visualization.github.io/folium/quickstart.html#Getting-Started
         """
         import folium
         from folium.plugins import MeasureControl, MousePosition
 
         if ignore == "all":
-            ignore = [d for d, _ in self.get_all_deployments()]
+            ignore = [out[0] for out in self.get_all_deployments()]
 
         m = folium.Map(
             location=[self["lat_mid"], self["lon_mid"]],
@@ -422,7 +420,7 @@ class Campaign(object):
         ).add_to(m)
 
         # campaign details
-        for label, d, meta in self.get_all_deployments(meta=True):
+        for label, d, p, s, meta in self.get_all_deployments():
             if "color" in meta:
                 color = meta["color"]
             else:
@@ -430,9 +428,10 @@ class Campaign(object):
             if ignore is None or label not in ignore:
                 if d.start.lat is None:
                     continue
+                _label = " / ".join([x for x in [label, p, s] if x is not None])
                 folium.Polygon(
                     [(d.start.lat, d.start.lon), (d.end.lat, d.end.lon)],
-                    tooltip=label
+                    tooltip=_label
                     + "<br>"
                     + str(d.start.time)
                     + "<br>"
@@ -443,13 +442,13 @@ class Campaign(object):
                 ).add_to(m)
                 folium.Circle(
                     (d.start.lat, d.start.lon),
-                    tooltip=label + "<br>" + str(d.start.time),
+                    tooltip=_label + "<br>" + str(d.start.time),
                     radius=2 * 1e2,
                     color=cnames[color],
                 ).add_to(m)
                 folium.Circle(
                     (d.end.lat, d.end.lon),
-                    tooltip=label + "<br>" + str(d.end.time),
+                    tooltip=_label + "<br>" + str(d.end.time),
                     radius=1e2,
                     color=cnames[color],
                 ).add_to(m)
@@ -477,9 +476,8 @@ class Campaign(object):
         platforms=True,
         sensors=True,
         deployments=True,
-        height=0.3,
+        height=0.6,
         labels=False,
-        start_scale=1,
         ax=None,
         grid=True,
     ):
@@ -488,15 +486,16 @@ class Campaign(object):
         Parameters
         ----------
         platforms: boolean, optional
+            Show platforms
         sensors: boolean, optional
+            Show sensors
         deployments: boolean, optional
+            Show deployments
         height: float, optional
-            bar heights
-        legend:, optional
-        start_scale:
+            bar heights, 0.6 by default
         ax: pyplot.axes, optional
         grid: boolean, optional
-
+            Turn grid one (default is True)
         """
 
         if ax is None:
@@ -572,6 +571,7 @@ class Campaign(object):
 
         # set the limits
         delta_time = max(ends) - min(starts)
+        start_scale = 1
         plt.xlim(
             [
                 min(starts) - delta_time * 0.05 * start_scale,
@@ -582,7 +582,7 @@ class Campaign(object):
 
         return ax
 
-    def add_legend(
+    def _add_legend(
         self,
         ax,
         labels=None,
@@ -592,6 +592,7 @@ class Campaign(object):
     ):
         """Add legend for units on an axis,
         Used for timelines as well as maps
+        This could be used in timeline, kept as an archive at the moment
 
         Parameters
         ----------
@@ -798,9 +799,3 @@ def _process_platforms(platforms):
         pfs[p] = pf
 
     return pfs
-
-
-def _extract_last_digit(filename):
-    """extract last digit prior to extension in filename"""
-    last_str = filename.split("_")[-1].split(".")[0]
-    return int(re.search(r"\d+$", last_str).group())

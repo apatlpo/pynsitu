@@ -35,7 +35,7 @@ def plot_map(
     colorbar_kwargs={},
     centered_clims=False,
     gridlines=True,
-    bathy=False,
+    bathy=None,
     bathy_levels=None,
     land=False,
     coastline="110m",
@@ -68,12 +68,13 @@ def plot_map(
         Center color limits (default is False)
     gridlines: boolean, optional
         Add grid lines (default is True)
-    bathy: boolean, optional
-        Plot bathymetry (default is False)
+    bathy: str, optional
+        Plot bathymetry (default is None)
+        Need to provide path to bathymetry (see pynsitu.maps.load_bathy)
     bathy_levels: list/tuple
         Levels of bathymetry to plot
-    land: boolean, optional
-        (default is True)
+    land: boolean, str optional
+        Add land (default is True)
     coast_resolution: str, optional
     """
 
@@ -182,7 +183,16 @@ def plot_map(
 
 
 def _plot_land(ax, land, **kwargs):
-    """plot land"""
+    """plot land on an existing axis
+
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    land: bool, str
+        True, ["10m", "50m", "110m"], or path to land shapefile
+    **kwargs: passed to plotting method
+    """
     dkwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
     dkwargs.update(**kwargs)
     if isinstance(land, bool) and land:
@@ -198,7 +208,16 @@ def _plot_land(ax, land, **kwargs):
 
 
 def _plot_coastline(ax, coast, **kwargs):
-    """plot coastline"""
+    """plot coastline on an existing axis
+
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    coast: bool, str
+        True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
+    **kwargs: passed to plotting method
+    """
     dkwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=5)
     dkwargs.update(**kwargs)
     if isinstance(coast, bool) and coast:
@@ -219,7 +238,16 @@ def _plot_coastline(ax, coast, **kwargs):
 
 
 def _plot_rivers(ax, rivers, **kwargs):
-    """plot rivers"""
+    """plot rivers on an existing axis
+
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    rivers: bool, str
+        True, ["10m", "50m", "110m"] or path to rivers shapefile
+    **kwargs: passed to plotting method
+    """
     dkwargs = dict(facecolor="blue", edgecolor="blue", zorder=6)
     dkwargs.update(**kwargs)
     if isinstance(rivers, bool) and rivers:

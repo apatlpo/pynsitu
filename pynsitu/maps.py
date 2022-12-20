@@ -116,10 +116,12 @@ def plot_map(
         kwargs["vmax"] = vmax
 
     if bathy:
-        dab = load_bathy(bathy, bounds=extent)["depth"]
-        kwargs.update(cmap=cm.deep, vmin=0)
-        if bathy_fill:
-            da = dab
+        dab = load_bathy(bathy, bounds=extent)
+        if dab is not None:
+            dab = dab["depth"]
+            kwargs.update(cmap=cm.deep, vmin=0)
+            if bathy_fill:
+                da = dab
 
     if da is not None:
         im = da.squeeze().plot.pcolormesh(
@@ -131,7 +133,7 @@ def plot_map(
             **kwargs,
         )
 
-    if bathy:
+    if bathy and dab is not None:
         if bathy_levels is not None:
             if len(bathy_levels) == 3:
                 bathy_levels = np.arange(*bathy_levels)

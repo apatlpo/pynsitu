@@ -436,7 +436,9 @@ class Campaign(object):
 
         # bathymetric contours
         if bathy:
-            contour_file = os.path.join(self["path_processed"], "bathy_contours.geojson")
+            contour_file = os.path.join(
+                self["path_processed"], "bathy_contours.geojson"
+            )
             if not os.path.isfile(contour_file) or (
                 os.path.isfile(contour_file) and overwrite_contours
             ):

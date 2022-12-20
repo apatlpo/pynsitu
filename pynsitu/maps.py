@@ -38,6 +38,7 @@ def plot_map(
     gridlines=True,
     bathy=None,
     bathy_levels=None,
+    bathy_fill=False,
     land=False,
     coastline="110m",
     rivers=False,
@@ -72,9 +73,11 @@ def plot_map(
     bathy: str, optional
         Plot bathymetry (default is None)
         Need to provide path to bathymetry (see pynsitu.maps.load_bathy)
-    bathy_levels: list/tuple
+    bathy_levels: list/tuple, optional
         Levels of bathymetry to plot
-    land: boolean, str optional
+    bathy_fill: boolean, optional
+        Fill bathymetry with colors
+    land: boolean, str, optional
         Add land (default is True)
     coast_resolution: str, optional
     """
@@ -113,23 +116,10 @@ def plot_map(
         kwargs["vmax"] = vmax
 
     if bathy:
-        da = load_bathy(bathy, bounds=extent)["depth"]
-        if bathy_levels is not None:
-            if len(bathy_levels) == 3:
-                bathy_levels = np.arange(*bathy_levels)
-            CS = da.plot.contour(
-                x="longitude",
-                y="latitude",
-                ax=ax,
-                transform=crs,
-                levels=bathy_levels,
-                lw=1,
-                colors="0.5",
-            )
-            ax.clabel(CS, CS.levels, inline=False, fontsize=10)
-            da = None
-        else:
-            kwargs.update(cmap=cm.deep, vmin=0)
+        dab = load_bathy(bathy, bounds=extent)["depth"]
+        kwargs.update(cmap=cm.deep, vmin=0)
+        if bathy_fill:
+            da = dab
 
     if da is not None:
         im = da.squeeze().plot.pcolormesh(
@@ -140,6 +130,21 @@ def plot_map(
             add_colorbar=False,
             **kwargs,
         )
+
+    if bathy:
+        if bathy_levels is not None:
+            if len(bathy_levels) == 3:
+                bathy_levels = np.arange(*bathy_levels)
+            CS = dab.plot.contour(
+                x="longitude",
+                y="latitude",
+                ax=ax,
+                transform=crs,
+                levels=bathy_levels,
+                lw=1,
+                colors="0.5",
+            )
+            ax.clabel(CS, CS.levels, inline=False, fontsize=10)
 
     # coastlines and land:
     if land:

@@ -8,30 +8,55 @@ This page provides an auto-generated summary of pynsitu's API. For more details
 and examples, refer to the relevant chapters in the main part of the
 documentation.
 
+..
+  .. note::
 
-.. note::
-
-  A note
+    A note
 
 events
-====
+======
+
+Module handling helpful classes to keep track of an experimental campaign timeline
 
 .. automodule:: pynsitu.events
   :members:
 
-geo
-=======
+maps
+====
 
-You also may wish to use xrft's detrend function on its own.
+Module for map generation (cartopy, folium)
+
+.. automodule:: pynsitu.maps
+  :members:
+
+geo
+===
+
+Module with pandas and xarray accessors for the analysis of geographically referenced data
 
 .. automodule:: pynsitu.geo
   :members:
 
-maps
+tseries
 =======
 
-Pad and unpad arrays and its coordinates so they can be used for computing
-FFTs.
+Module with pandas and xarray accessors for time series analysis
 
-.. automodule:: pynsitu.maps
+.. automodule:: pynsitu.tseries
+  :members:
+
+seawater
+========
+
+Module with pandas and xarray accessors for data containing seawater information
+
+.. automodule:: pynsitu.seawater
+  :members:
+
+drifters
+========
+
+Drifter specific data analysis
+
+.. automodule:: pynsitu.drifters
   :members:

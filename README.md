@@ -5,16 +5,5 @@
 
 # pynsitu: oceanographic insitu data toolbox
 
-...
-
-## data model
-
-pandas and/or xarray based with accessors
-
-- lon/lat/depth, geodetic properties
-- water properties
-
-Requires:
-
-- cartopy, bokeh
-- pytide, pyTMD
+Various tools for the processing of oceanographic data based on pandas/xarray.
+See [documention](https://pynsitu.readthedocs.io/en/latest/index.html)

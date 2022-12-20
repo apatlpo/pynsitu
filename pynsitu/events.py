@@ -126,7 +126,8 @@ class Deployment(object):
 
         if meta is None:
             if len(loglines) == 3:
-                meta = loglines[2]["meta"]
+                meta = loglines[2]
+                # meta = loglines[2]["meta"]
             else:
                 meta = dict()
         self.meta = dict(**meta)
@@ -137,7 +138,7 @@ class Deployment(object):
         return getattr(self, key)
 
     def __repr__(self):
-        return "cognac.insitu.events.deployment({})".format(str(self))
+        return "Deployment({})".format(str(self))
 
     def __str__(self):
         return self.label + " / " + str(self.start) + " / " + str(self.end)
@@ -220,7 +221,7 @@ class Deployments(UserDict):
     #        yield value
 
     def __repr__(self):
-        return "cognac.insitu.events.deployments({})".format(str(self))
+        return "Deployments({})".format(str(self))
 
     def __str__(self):
         return self["label"] + "\n" + "\n".join(str(d) for d in self)
@@ -237,6 +238,33 @@ class Platform(UserDict):
             if key in self.data[t]:
                 return self.data[t][key]
         return self.data[key]
+
+    def deployments(self):
+        for s in self.data["deployments"]:
+            yield s
+
+    def sensors(self):
+        for s in self.data["sensors"]:
+            yield s
+
+    def __repr__(self):
+        return "cognac.insitu.events.Platform({})".format(str(self))
+
+    def __str__(self):
+        if "label" in self.data["meta"]:
+            out = "Platform " + self["label"] + "\n"
+        else:
+            out = "Platform - no label\n"
+        # deployments
+        if self.data["deployments"]:
+            out += (
+                " general deployments: "
+                + " / ".join([d for d in self.deployments()])
+                + "\n"
+            )
+        if self.data["sensors"]:
+            out += " sensors: " + " / ".join([d for d in self.sensors()]) + "\n"
+        return out
 
 
 class Campaign(object):
@@ -277,7 +305,7 @@ class Campaign(object):
         self.cp = cp
 
     def __repr__(self):
-        return "cognac.insitu.events.campaign({})".format(str(self))
+        return "Campaign({})".format(str(self))
 
     def __str__(self):
         # fmt = "%Y-%m-%d %H:%M:%S"
@@ -559,7 +587,7 @@ class Campaign(object):
         for p, pf in self.platforms.items():
             if platforms and pf["deployments"]:
                 for _, d in pf["deployments"].items():
-                    _kwargs = dict(label=d.label, **pf["meta"])
+                    _kwargs = dict(**pf["meta"])
                     if not labels:
                         _kwargs.pop("label")
                     plot_d(d, y, **_kwargs)
@@ -785,13 +813,13 @@ def _process_platforms(platforms):
 
         pf = Platform()
 
-        pmeta = dict()
+        pmeta = dict(label=p)
         if "meta" in v:
             pmeta.update(**v["meta"])
         pf["meta"] = pmeta
 
         # deployments
-        D = Deployments(meta=dict(label=p, **pmeta))
+        D = Deployments(meta=pmeta)
         if "deployments" in v:
             D.update(
                 {
@@ -807,7 +835,9 @@ def _process_platforms(platforms):
         if "sensors" in v:
             # o["sensors"] = list(v["sensors"])
             for s, vs in v["sensors"].items():
-                D = Deployments(meta=dict(label=s, **pmeta))
+                smeta = dict(**pmeta)
+                smeta.update(label=s)
+                D = Deployments(meta=smeta)
                 if "deployments" in vs:
                     D.update(
                         {

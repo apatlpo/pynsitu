@@ -104,7 +104,21 @@ def test_campaign_instantiation():
 
     # loop over all deployments
     for label, deployment, platform, sensor, meta in cp.get_all_deployments():
-        print(label, platform, sensor)
+        print(label, platform, sensor, deployment)
+
+    # select a deployment
+    cp["underway"]
+
+    # select a platform
+    cp["europe"]
+
+    # loop over all sensors of a Platform
+    for s in cp["europe"].sensors():
+        print(s)
+
+    # loop over all sensor Deployment objects:
+    for label, d in cp["europe"]["adcp"].items():
+        print(label, ":", d)
 
     # plot time line
     cp.timeline()

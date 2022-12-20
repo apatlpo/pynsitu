@@ -242,6 +242,7 @@ class PdSeawaterAccessor:
         deployments=None,
         rule=None,
         plot_width=400,
+        cross=True,
     ):
         """Bokeh plot, useful to clean data
 
@@ -251,8 +252,10 @@ class PdSeawaterAccessor:
             Deployments
         rule: str, optional
             resampling rule
-        plot_width: int
+        plot_width: int, optional
             Plot width in pixels
+        cross: boolean, optional
+            ...
         """
 
         if rule is not None:

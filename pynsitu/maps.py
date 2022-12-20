@@ -300,12 +300,16 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
 
     """
     if bathy == "etopo1":
+        if not os.path.isfile(_bathy_etopo1):
+            return None
         ds = xr.open_dataset(_bathy_etopo1)
         # ds = ds.rename({'x': 'lon', 'y': 'lat', 'z': 'elevation'})
         ds = ds.rename({"z": "elevation"})
         if bounds is None and steps is None:
             steps = (4, 4)
     else:
+        if not os.path.isfile(bathy):
+            return None
         ds = xr.open_dataset(bathy)
 
     if "depth" not in ds and "elevation" in ds:

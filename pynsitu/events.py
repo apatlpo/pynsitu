@@ -4,6 +4,7 @@
 import os
 from glob import glob
 from collections import UserDict
+import re
 
 import pandas as pd
 import xarray as xr
@@ -127,7 +128,10 @@ class Deployment(object):
         if meta is None:
             if len(loglines) == 3:
                 meta = loglines[2]
-                # meta = loglines[2]["meta"]
+                assert isinstance(meta, dict)
+                if "meta" in meta:
+                    # not pretty but seems necessary to handle all cases
+                    meta = meta["meta"]
             else:
                 meta = dict()
         self.meta = dict(**meta)
@@ -235,7 +239,7 @@ class Platform(UserDict):
 
     def __getitem__(self, key):
         for t in ["meta", "sensors", "deployments"]:
-            if key in self.data[t]:
+            if t in self.data and key in self.data[t]:
                 return self.data[t][key]
         return self.data[key]
 
@@ -315,7 +319,7 @@ class Campaign(object):
         return self["name"] + " {} to {}".format(start, end)
 
     def __getitem__(self, item):
-        if item in self.meta:
+        if self.meta and item in self.meta:
             return self.meta[item]
         elif self.deployments and item in self.deployments:
             return self.deployments[item]
@@ -573,7 +577,7 @@ class Campaign(object):
                 ax.text(start, y, label, va="center", color=color_txt)
 
         # common deployments
-        if deployments:
+        if deployments and self.deployments:
             for _, d in self.deployments.items():
                 _kwargs = dict(label=d.label, **d.meta)
                 # if not labels:
@@ -584,26 +588,27 @@ class Campaign(object):
             y += -1
 
         # platform
-        for p, pf in self.platforms.items():
-            if platforms and pf["deployments"]:
-                for _, d in pf["deployments"].items():
-                    _kwargs = dict(**pf["meta"])
-                    if not labels:
-                        _kwargs.pop("label")
-                    plot_d(d, y, **_kwargs)
-                yticks.append(y)
-                yticks_labels.append(p)
-                y += -1
-            #
-            if sensors:
-                for s, sv in pf["sensors"].items():
-                    for _, d in sv.items():
-                        _kwargs = {**sv.meta}
-                        _kwargs.pop("label")
+        if platforms and self.platforms:
+            for p, pf in self.platforms.items():
+                if platforms and pf["deployments"]:
+                    for _, d in pf["deployments"].items():
+                        _kwargs = dict(**pf["meta"])
+                        if not labels:
+                            _kwargs.pop("label")
                         plot_d(d, y, **_kwargs)
                     yticks.append(y)
-                    yticks_labels.append(p + " " + s)
+                    yticks_labels.append(p)
                     y += -1
+                #
+                if sensors and pf["sensors"]:
+                    for s, sv in pf["sensors"].items():
+                        for _, d in sv.items():
+                            _kwargs = {**sv.meta}
+                            _kwargs.pop("label")
+                            plot_d(d, y, **_kwargs)
+                        yticks.append(y)
+                        yticks_labels.append(p + " " + s)
+                        y += -1
 
         ax.set_title(self.name)
         ax.set_yticks(yticks)
@@ -852,3 +857,9 @@ def _process_platforms(platforms):
         pfs[p] = pf
 
     return pfs
+
+
+def _extract_last_digit(filename):
+    """extract last digit prior to extension in filename"""
+    last_str = filename.split("_")[-1].split(".")[0]
+    return int(re.search(r"\d+$", last_str).group())

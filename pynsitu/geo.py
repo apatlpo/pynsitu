@@ -436,7 +436,7 @@ class GeoAccessor:
                 ymax = ymax.max()
             if not isinstance(ymin, float):
                 ymin = ymin.min()
-            print(ymin, ymax)
+
             if deployments is not None:
                 for label, d in deployments.items():
                     s.line(

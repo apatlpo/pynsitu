@@ -389,6 +389,7 @@ class Campaign(object):
         height="100%",
         tiles="Cartodb Positron",
         ignore=None,
+        bathy=True,
         overwrite_contours=False,
         zoom=10,
     ):
@@ -411,6 +412,8 @@ class Campaign(object):
                 - "CartoDB" (positron and dark_matter)
         ignore: list, optional
             Ignore deployment labels
+        bathy: boolean, optional
+            Turn on/off bathymetric contours plotting
         overwrite_contours: boolean, optional
             Overwrite contour file (default is False)
         zoom: int
@@ -432,17 +435,18 @@ class Campaign(object):
         )
 
         # bathymetric contours
-        contour_file = os.path.join(self["path_processed"], "bathy_contours.geojson")
-        if not os.path.isfile(contour_file) or (
-            os.path.isfile(contour_file) and overwrite_contours
-        ):
-            store_bathy_contours(
-                self["bathy"]["path"],
-                contour_file=contour_file,
-                levels=self["bathy"]["levels"],
-                bounds=self["bounds"],
-            )
-        contours_geojson = load_bathy_contours(contour_file)
+        if bathy:
+            contour_file = os.path.join(self["path_processed"], "bathy_contours.geojson")
+            if not os.path.isfile(contour_file) or (
+                os.path.isfile(contour_file) and overwrite_contours
+            ):
+                store_bathy_contours(
+                    self["bathy"]["path"],
+                    contour_file=contour_file,
+                    levels=self["bathy"]["levels"],
+                    bounds=self["bounds"],
+                )
+            contours_geojson = load_bathy_contours(contour_file)
 
         tooltip = folium.GeoJsonTooltip(
             fields=["title"],
@@ -464,13 +468,14 @@ class Campaign(object):
                 #'popup': feature['properties']['title'],
             }
 
-        folium.GeoJson(
-            contours_geojson,
-            name="geojson",
-            style_function=style_func,
-            tooltip=tooltip,
-            popup=popup,
-        ).add_to(m)
+        if bathy:
+            folium.GeoJson(
+                contours_geojson,
+                name="geojson",
+                style_function=style_func,
+                tooltip=tooltip,
+                popup=popup,
+            ).add_to(m)
 
         # campaign details
         for label, d, p, s, meta in self.get_all_deployments():

@@ -127,7 +127,7 @@ def test_campaign_instantiation():
     cp.map()
 
     # plot folium
-    cp.map_folium()
+    cp.map_folium(bathy=False)
 
 
 if __name__ == "__main__":

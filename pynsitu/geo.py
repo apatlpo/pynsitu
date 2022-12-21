@@ -704,7 +704,7 @@ def _compute_velocities(
     if centered:
         w = dt / (dt + dt.shift(-1))
         df.loc[:, "velocity_east"] = dxdt + (dxdt.shift(-1) - dxdt) * w
-        df.loc[:, "velocity_north"] = dydt + (dydt.shift(-1) - dxdt) * w
+        df.loc[:, "velocity_north"] = dydt + (dydt.shift(-1) - dydt) * w
     else:
         df.loc[:, "velocity_east"] = dxdt
         df.loc[:, "velocity_north"] = dydt

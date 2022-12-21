@@ -30,7 +30,8 @@ def test_despike_isolated(sample_drifter_data):
     df = sample_drifter_data
     df["lon"][10] = df["lon"][10] + 1e-1
     df["lat"][10] = df["lat"][10] + 1e-1
-    df0 = df.geo.compute_velocities(acceleration=True)
+    df0 = df.geo.compute_velocities()
+    df0.geo.compute_accelerations(inplace=True)
 
     # test with very high threshold, not spikes should be detected
     df = pyn.drifters.despike_isolated(df0, 1, verbose=False)

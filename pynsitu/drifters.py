@@ -215,6 +215,7 @@ def time_window_processing(
         dt: float, str
             Conform time series to some time step, if string must conform to rule option of
             pandas resample method
+        geo:
         **myfun_kwargs
             Keyword arguments for myfun
 

@@ -40,7 +40,7 @@ def test_despike_isolated(sample_drifter_data):
 
     # test with reasonable threshold, several spikes detected
     df = pyn.drifters.despike_isolated(df0, 1e-4, verbose=False)
-    assert df.index.size < Nt - 1, f"{df.index.size, Nt}"
+    assert df.index.size < Nt, f"{df.index.size, Nt}"
     # output length is 334 agains 337 in input, i.e. 3 data points where deleted
     # this is more than expected, why !?!?
 

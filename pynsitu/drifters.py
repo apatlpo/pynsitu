@@ -72,7 +72,12 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
 
 
 def smooth_resample(
-    df, t_target, position_error, acceleration_amplitude, acceleration_T
+    df,
+    t_target,
+    position_error,
+    acceleration_amplitude,
+    acceleration_T,
+    velocity_acceleration=True,
 ):
     """Smooth and resample a drifter position time series
     The smoothing balances positions information according to the specified
@@ -98,6 +103,8 @@ def smooth_resample(
         Acceleration typical amplitude
     acceleration_T: float
         Acceleration decorrelation timescale in seconds
+    velocity_acceleration: boolean, optional
+        Updates velocity and acceleration
     """
 
     # init final structure
@@ -127,8 +134,11 @@ def smooth_resample(
     # first reset reference from df
     dfi.geo.set_projection_reference(df.geo.projection_reference)  # inplace
     dfi.geo.compute_lonlat()  # inplace
+
     # recompute velocity, should be an option?
-    dfi = dfi.geo.compute_velocities(acceleration=True)
+    if velocity_acceleration:
+        dfi = dfi.geo.compute_velocities()
+        dfi = dfi.geo.compute_accelerations()
 
     return dfi
 

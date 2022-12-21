@@ -1144,7 +1144,7 @@ def _compute_velocities(
     if centered:
         w = dt / (dt + dt.shift(-1))
         df.loc[:, names[0]] = dxdt + (dxdt.shift(-1) - dxdt) * w
-        df.loc[:, names[1]] = dydt + (dydt.shift(-1) - dxdt) * w
+        df.loc[:, names[1]] = dydt + (dydt.shift(-1) - dydt) * w
     else:
         df.loc[:, names[0]] = dxdt
         df.loc[:, names[1]] = dydt

@@ -3,34 +3,22 @@
 #
 import os
 from glob import glob
-import yaml
+from collections import UserDict
 import re
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 import math
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, datetime
 import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 from matplotlib.colors import cnames
 
-import folium
-from folium.plugins import MeasureControl, MousePosition
-
-from .geo import plot_map, plot_bathy, load_bathy_contours, dec2degmin
-
-# from .utils import dec2degmin, \
-#                plot_map, plot_bathy, \
-#                load_bathy_contours, store_bathy_contours
-
-# _bounds_default = [6.4, 6.6, 42.92, 43.2]
-# _bounds_default = [6., 6.6, 42.7, 43.2]
+from .maps import crs, plot_map, load_bathy_contours, store_bathy_contours
 
 
-class event(object):
+class Event(object):
     """An event is an atom used to describe deployments.
     It contains four elementary information:
             label, longitude, latitude, time
@@ -90,19 +78,16 @@ class event(object):
             return "{} {}".format(self.label, self.time)
 
 
-class deployment(object):
-    """An deployment describes data collection during a continuous stretch of
+class Deployment(object):
+    """A deployment describes data collection during a continuous stretch of
     time and is thus described by:
         - a label
         - a start event (see class event`)
         - an end event (see class `event`)
-        - an info dictionnary
-
-    It contains four elementary information:
-            label, longitude, latitude, time
+        - a meta dictionnary containing various pieces of information
     """
 
-    def __init__(self, label, start=None, end=None, loglines=None):
+    def __init__(self, label, start=None, end=None, meta=None, loglines=None):
         """Instantiate a `deployment`
         start and end or loglines must be provided
 
@@ -110,43 +95,69 @@ class deployment(object):
         ----------
         label: str
             Label of the deployment
-        start: pynsitu.events.event, optional
+        start: pynsitu.events.event
             Starting event
         end: pynsitu.events.event, optional
+        meta: dict, optional
+            meta information about the deployment
         loglines: list, optional
             List of loglines corresponding. Accepted forms:
-                [log_start, log_end] or [log_start, log_end, info_dict]
+                [log_start, log_end] or [log_start, log_end, meta]
             where log_start and log_end are str sufficient for the instantiations
-            of events (see `event` doc), and where info_dict is a dictionnary
+            of events (see `event` doc), and where meta is a dictionnary
             containing relevant information about the deployment
         """
+
         self.label = label
+
         assert (
-            start is not None and end is not None
-        ) or loglines is not None, "start and end or loglines must be provided"
-        if loglines is None:
-            self.start = start
-            self.end = end
-        else:
-            self.start = event(label="start", logline=loglines[0])
-            self.end = event(label="end", logline=loglines[1])
+            start is not None or loglines is not None
+        ), "start or loglines must be provided"
+
+        if start is None:
+            start = loglines[0]
+        if not isinstance(start, Event):
+            self.start = Event(label="start", logline=start)
+        #
+        if end is None and loglines is not None:
+            end = loglines[1]
+        if end is not None:
+            end = Event(label="end", logline=end)
+        self.end = end
+
+        if meta is None:
             if len(loglines) == 3:
-                self.info = loglines[2]["info"]
+                meta = loglines[2]
+                assert isinstance(meta, dict)
+                if "meta" in meta:
+                    # not pretty but seems necessary to handle all cases
+                    meta = meta["meta"]
             else:
-                self.info = dict()
+                meta = dict()
+        self.meta = dict(**meta)
+
+    def __getitem__(self, key):
+        if key in self.meta:
+            return self.meta[key]
+        return getattr(self, key)
 
     def __repr__(self):
-        return "cognac.insitu.events.deployment({})".format(str(self))
+        return "Deployment({})".format(str(self))
 
     def __str__(self):
         return self.label + " / " + str(self.start) + " / " + str(self.end)
 
+    def to_deployments(self):
+        """converts to deployments object"""
+        return Deployments(**{self.label: self})
+
     def plot_on_map(
         self,
         ax,
-        line=True,
-        label=False,
-        label_yshift=1,
+        line=False,
+        label=True,
+        label_xyshift=(0.1, 0.1),
+        s=5,
         **kwargs,
     ):
         """Plot deployment on a map
@@ -159,8 +170,8 @@ class deployment(object):
             Plot a line between start and end
         label: boolean, optional
             Print label (False by default)
-        label_yshift: float, optional
-            Shifts the label in the y direction (1 by default)
+        label_xyshift: tuple, optional
+            Shifts the label in the x and y direction, (.1,.1) by default
         **kwargs: optional
             Passed to pyplot plotting methods, if cartopy is used, one should
             at least pass `transform=ccrs.PlateCarree()`
@@ -168,190 +179,230 @@ class deployment(object):
         if self.start.lon is None:
             # exits right for deployments that do not have lon/lat info
             return
+        dkwargs = dict(transform=crs)
+        dkwargs.update(**kwargs)
         #
         x0, y0 = self.start.lon, self.start.lat
         x1, y1 = self.end.lon, self.end.lat
         #
-        ax.scatter(x0, y0, s, marker="o", **kwargs)
-        ax.scatter(x1, y1, s, marker="*", **kwargs)
+        ax.scatter(x0, y0, s, marker="o", **dkwargs)
+        ax.scatter(x1, y1, s, marker="*", **dkwargs)
         #
         if line:
-            ax.plot([x0, x1], [y0, y1], "-", **kwargs)
+            ax.plot([x0, x1], [y0, y1], "-", **dkwargs)
         if label:
-            xb, yb = ax.get_xbound(), ax.get_ybound()
-            xoffset = 0.02 * (xb[1] - xb[0])
-            yoffset = 0.02 * (yb[1] - yb[0]) * label_yshift
             if type(label) is not str:
                 label = self.label
-            ax.text(x0 + xoffset, y0 + yoffset, label, fontsize=10)
-        return
+            ax.text(
+                x0 + label_xyshift[0],
+                y0 + label_xyshift[1],
+                label,
+                fontsize=10,
+                transform=crs,
+            )
 
 
-class objdict(object):
-    """Dict like object that treats some parameters (e.g. path and color)
-    as attributes.
+class Deployments(UserDict):
+    """deployement dictionnary, provides shortcuts to access data in meta subdicts, e.g.:
+    p = Deployments(meta=dict(a=1))
+    p["a"] # returns 1
     """
 
     def __init__(self, *args, **kwargs):
-        self._dict = dict(*args, **kwargs)
-        self._skip = ["path", "label"]
-
-    def __contains__(self, item):
-        return item in self._dict
+        self.meta = dict(label="deployments", color="0.5")
+        super().__init__(*args, **kwargs)
+        if "meta" in self.data:
+            self.meta.update(self.data.pop("meta"))
 
     def __getitem__(self, key):
-        return self._dict[key]
+        if key in self.meta:
+            return self.meta[key]
+        return self.data[key]
 
-    def __setitem__(self, key, value):
-        self._dict[key] = value
-
-    def __iter__(self):
-        for key, value in self._dict.items():
-            if key not in self._skip:
-                yield value
+    # def __iter__(self):
+    #    """ yield value instead of key """
+    #    for key, value in self.data.items():
+    #        yield value
 
     def __repr__(self):
-        return "cognac.insitu.events.unit({})".format(str(self))
+        return "Deployments({})".format(str(self))
 
     def __str__(self):
         return self["label"] + "\n" + "\n".join(str(d) for d in self)
 
 
-class campaign(object):
+class Platform(UserDict):
+    """Platform dictionnary, provides shortcuts to access data in meta, sensors and deployments subdicts, e.g.:
+    p = platform(sensors=dict(a=1), deployments=dict(b=2))
+    p["a"] # returns 1
+    """
+
+    def __getitem__(self, key):
+        for t in ["meta", "sensors", "deployments"]:
+            if t in self.data and key in self.data[t]:
+                return self.data[t][key]
+        return self.data[key]
+
+    def deployments(self):
+        for s in self.data["deployments"]:
+            yield s
+
+    def sensors(self):
+        for s in self.data["sensors"]:
+            yield s
+
+    def __repr__(self):
+        return "cognac.insitu.events.Platform({})".format(str(self))
+
+    def __str__(self):
+        if "label" in self.data["meta"]:
+            out = "Platform " + self["label"] + "\n"
+        else:
+            out = "Platform - no label\n"
+        # deployments
+        if self.data["deployments"]:
+            out += (
+                " general deployments: "
+                + " / ".join([d for d in self.deployments()])
+                + "\n"
+            )
+        if self.data["sensors"]:
+            out += " sensors: " + " / ".join([d for d in self.sensors()]) + "\n"
+        return out
+
+
+class Campaign(object):
     """Campaign object, gathers deployments information from a yaml file"""
 
-    def __init__(self, file, verbose=True):
+    def __init__(self, file):
 
         # open yaml information file
-        if ".yaml" not in file:
+        import yaml
+
+        if ".yaml" not in file and ".yml" not in file:
             file = file + ".yaml"
         with open(file, "r") as stream:
             cp = yaml.full_load(stream)
 
-        default_attr = {
-            "name": "unknown",
-            "lon": None,
-            "lat": None,
-            "start": None,
-            "end": None,
-            "path": None,
-            "bathy": None,
-            "raw": "",
-        }
-        for key, value in default_attr.items():
-            if key in cp:
-                setattr(self, key, cp[key])
-            else:
-                setattr(self, key, value)
+        # process campaign meta data
+        self.meta = _process_meta_campaign(cp)
+        self.name = self.meta["name"]
 
-        if self.lon and self.lat:
-            # ensure coords are floats
-            self.lon = tuple(float(l) for l in self.lon)
-            self.lat = tuple(float(l) for l in self.lat)
-            #
-            self.bounds = self.lon + self.lat
-            self.lon_mid = (self.lon[0] + self.lon[1]) * 0.5
-            self.lat_mid = (self.lat[0] + self.lat[1]) * 0.5
-
-        if self.start:
-            self.start = pd.Timestamp(self.start)
-        if self.end:
-            self.end = pd.Timestamp(self.end)
-
-        # path to raw data
-        self.pathr = os.path.join(self.path, self.raw)
-
-        # path to processed data
-        if "pathp" in cp:
-            if cp["pathp"][0] == "/":
-                self.pathp = cp["pathp"]
-            else:
-                self.pathp = os.path.join(self.path, cp["pathp"])
+        # deployments
+        if "deployments" in cp:
+            self.deployments = Deployments(
+                {
+                    d: Deployment(label=d, **v) if d != "meta" else v
+                    for d, v in cp["deployments"].items()
+                }
+            )
         else:
-            self.pathp = os.path.join(self.path, "datap")
+            self.deployments = None
 
-        self._units = {}
-        for u, info in cp["units"].items():
-            if verbose:
-                print(u)
-            self._units[u] = objdict(path=self.path, label=u)
-            for d, value in info["deployments"].items():
-                self._units[u][d] = deployment(label=d, loglines=value)
-            for d, value in info.items():
-                if d == "path":
-                    if isinstance(value, str):
-                        _p = os.path.join(self.path, value)
-                    else:
-                        _p = [os.path.join(self.path, v) for v in value]
-                    self._units[u]["path"] = _p
-                elif d != "deployments":
-                    self._units[u][d] = value
-                    self._units[u]._skip.append(d)
+        # platforms
+        if "platforms" in cp:
+            self.platforms = _process_platforms(cp["platforms"])
+        else:
+            self.platforms = None
+
+        # dev
+        self.cp = cp
 
     def __repr__(self):
-        return "cognac.insitu.events.campaign({})".format(str(self))
+        return "Campaign({})".format(str(self))
 
     def __str__(self):
         # fmt = "%Y-%m-%d %H:%M:%S"
         fmt = "%Y/%m/%d"
-        start = self.start.strftime(fmt)
-        end = self.end.strftime(fmt)
-        return self.name + " {} to {}".format(start, end)
+        start = self["start"].strftime(fmt)
+        end = self["end"].strftime(fmt)
+        return self["name"] + " {} to {}".format(start, end)
 
     def __getitem__(self, item):
-        if item in self._units:
-            return self._units[item]
+        if self.meta and item in self.meta:
+            return self.meta[item]
+        elif self.deployments and item in self.deployments:
+            return self.deployments[item]
+        elif self.platforms and item in self.platforms:
+            return self.platforms[item]
         else:
             return None
 
     def __iter__(self):
-        # for key, value in self._units.items():
-        #    yield value
-        for key in self._units:
+        """iterates around deployments and platforms"""
+        L = []
+        if self.deployments:
+            L += list(self.deployments)
+        if self.platforms:
+            L += list(self.platforms)
+        for key in L:
             yield key
 
-    def __eq__(self, other):
-        if isinstance(other, str):
-            return self.name == other
-        else:
-            return False
+    def get_all_deployments(self):
+        """loops over all deployments, e.g.:
 
-    def items(self):
-        for key, value in self._units.items():
-            yield key, value
+        for label, deployment, platform, sensor, meta in cp.get_all_deployments():
+            ...
 
-    def plot_map(self, **kwargs):
-        """Plot map
-        Wrapper around utils.plot_map, see related doc
         """
+        if self.deployments:
+            for label, d in self.deployments.items():
+                yield label, d, None, None, d.meta
+        if self.platforms:
+            for p, vp in self.platforms.items():
+                if vp["deployments"]:
+                    for label, d in vp["deployments"].items():
+                        _meta = dict(**vp["meta"])
+                        _meta.update(**d.meta)
+                        yield label, d, p, None, _meta
+                if vp["sensors"]:
+                    _meta = dict(**vp["meta"])
+                    for s, vs in vp["sensors"].items():
+                        _meta.update(**vs.meta)
+                        for label, d in vs.items():
+                            yield label, d, p, s, _meta
+
+    def map(self, bathy=None, coastline=None, rivers=None, **kwargs):
+        """Plot map
+        Wrapper around geo.plot_map, see related doc
+        """
+        if bathy is None and "bathy" in self.meta and "path" in self["bathy"]:
+            bathy = self["bathy"]["path"]
+        if coastline is None and "coastline" in self.meta:
+            coastline = self["coastline"]
+        if rivers is None and "rivers" in self.meta:
+            rivers = self["rivers"]
         dkwargs = dict(
-            bounds=self.bounds,
-            # bathy=self.bathy['label'],
-            levels=self.bathy["levels"],
+            extent=self["bounds"],
+            bathy=bathy,
+            bathy_levels=self["bathy"]["levels"],
+            coastline=coastline,
+            rivers=rivers,
         )
-        # dkwargs.update((k,v) for k,v in kwargs.items() if v is not None)
-        dkwargs.update(kwargs)
-        fac = plot_map(cp=self, **dkwargs)
-        plot_bathy(fac, bathy=self.bathy["label"], **dkwargs)
+        dkwargs.update(**kwargs)
+        fac = plot_map(**dkwargs)
         return fac
 
-    def map(
+    def map_folium(
         self,
-        width="70%",
-        height="70%",
+        width="100%",
+        height="100%",
         tiles="Cartodb Positron",
-        ignore=[],
+        ignore=None,
+        bathy=True,
         overwrite_contours=False,
         zoom=10,
-        **kwargs,
     ):
         """Plot overview map with folium
 
         Parameters:
         ----------
-
-        tiles: str
-            tiles used, see `folium.Map?``
+        width: str, optional
+            width of the plot
+        height: str, optional
+            height of the plot
+        tiles: str, optional
+            tiles used, see `folium.Map?`` (default is Cartodb Positron)
                 - "OpenStreetMap"
                 - "Mapbox Bright" (Limited levels of zoom for free tiles)
                 - "Mapbox Control Room" (Limited levels of zoom for free tiles)
@@ -359,14 +410,24 @@ class campaign(object):
                 - "Cloudmade" (Must pass API key)
                 - "Mapbox" (Must pass API key)
                 - "CartoDB" (positron and dark_matter)
-
+        ignore: list, optional
+            Ignore deployment labels
+        bathy: boolean, optional
+            Turn on/off bathymetric contours plotting
+        overwrite_contours: boolean, optional
+            Overwrite contour file (default is False)
+        zoom: int
+            Folium zoom level, see Folium doc `zoom_start` kwarg
+            https://python-visualization.github.io/folium/quickstart.html#Getting-Started
         """
+        import folium
+        from folium.plugins import MeasureControl, MousePosition
 
         if ignore == "all":
-            ignore = self._units
+            ignore = [out[0] for out in self.get_all_deployments()]
 
         m = folium.Map(
-            location=[self.lat_mid, self.lon_mid],
+            location=[self["lat_mid"], self["lon_mid"]],
             width=width,
             height=height,
             zoom_start=zoom,
@@ -374,17 +435,20 @@ class campaign(object):
         )
 
         # bathymetric contours
-        contour_file = os.path.join(self.pathp, "bathy_contours.geojson")
-        if not os.path.isfile(contour_file) or (
-            os.path.isfile(contour_file) and overwrite_contours
-        ):
-            store_bathy_contours(
-                self.bathy["label"],
-                contour_file=contour_file,
-                levels=self.bathy["levels"],
-                bounds=self.bounds,
+        if bathy:
+            contour_file = os.path.join(
+                self["path_processed"], "bathy_contours.geojson"
             )
-        contours_geojson = load_bathy_contours(contour_file)
+            if not os.path.isfile(contour_file) or (
+                os.path.isfile(contour_file) and overwrite_contours
+            ):
+                store_bathy_contours(
+                    self["bathy"]["path"],
+                    contour_file=contour_file,
+                    levels=self["bathy"]["levels"],
+                    bounds=self["bounds"],
+                )
+            contours_geojson = load_bathy_contours(contour_file)
 
         tooltip = folium.GeoJsonTooltip(
             fields=["title"],
@@ -406,45 +470,48 @@ class campaign(object):
                 #'popup': feature['properties']['title'],
             }
 
-        folium.GeoJson(
-            contours_geojson,
-            name="geojson",
-            style_function=style_func,
-            tooltip=tooltip,
-            popup=popup,
-        ).add_to(m)
+        if bathy:
+            folium.GeoJson(
+                contours_geojson,
+                name="geojson",
+                style_function=style_func,
+                tooltip=tooltip,
+                popup=popup,
+            ).add_to(m)
 
         # campaign details
-        for uname, u in self.items():
-            if uname not in ignore:
-                for d in u:
-                    if d.start.lat is None:
-                        continue
-                    folium.Polygon(
-                        [(d.start.lat, d.start.lon), (d.end.lat, d.end.lon)],
-                        tooltip=uname
-                        + " "
-                        + d.label
-                        + "<br>"
-                        + str(d.start.time)
-                        + "<br>"
-                        + str(d.end.time),
-                        color=cnames[u["color"]],
-                        dash_array="10 20",
-                        opacity=0.5,
-                    ).add_to(m)
-                    folium.Circle(
-                        (d.start.lat, d.start.lon),
-                        tooltip=uname + " " + d.label + "<br>" + str(d.start.time),
-                        radius=2 * 1e2,
-                        color=cnames[u["color"]],
-                    ).add_to(m)
-                    folium.Circle(
-                        (d.end.lat, d.end.lon),
-                        tooltip=uname + " " + d.label + "<br>" + str(d.end.time),
-                        radius=1e2,
-                        color=cnames[u["color"]],
-                    ).add_to(m)
+        for label, d, p, s, meta in self.get_all_deployments():
+            if "color" in meta:
+                color = meta["color"]
+            else:
+                color = "black"
+            if ignore is None or label not in ignore:
+                if d.start.lat is None:
+                    continue
+                _label = " / ".join([x for x in [label, p, s] if x is not None])
+                folium.Polygon(
+                    [(d.start.lat, d.start.lon), (d.end.lat, d.end.lon)],
+                    tooltip=_label
+                    + "<br>"
+                    + str(d.start.time)
+                    + "<br>"
+                    + str(d.end.time),
+                    color=cnames[color],
+                    dash_array="10 20",
+                    opacity=0.5,
+                ).add_to(m)
+                folium.Circle(
+                    (d.start.lat, d.start.lon),
+                    tooltip=_label + "<br>" + str(d.start.time),
+                    radius=2 * 1e2,
+                    color=cnames[color],
+                ).add_to(m)
+                folium.Circle(
+                    (d.end.lat, d.end.lon),
+                    tooltip=_label + "<br>" + str(d.end.time),
+                    radius=1e2,
+                    color=cnames[color],
+                ).add_to(m)
 
         # useful plugins
 
@@ -466,13 +533,30 @@ class campaign(object):
 
     def timeline(
         self,
-        height=0.3,
-        legend=3,
-        skip_ship=True,
-        start_scale=1,
+        platforms=True,
+        sensors=True,
+        deployments=True,
+        height=0.6,
+        labels=False,
         ax=None,
+        grid=True,
     ):
-        """Plot the campaign deployment timeline"""
+        """Plot the campaign deployment timeline
+
+        Parameters
+        ----------
+        platforms: boolean, optional
+            Show platforms
+        sensors: boolean, optional
+            Show sensors
+        deployments: boolean, optional
+            Show deployments
+        height: float, optional
+            bar heights, 0.6 by default
+        ax: pyplot.axes, optional
+        grid: boolean, optional
+            Turn grid one (default is True)
+        """
 
         if ax is None:
             fig = plt.figure(figsize=(15, 5))
@@ -481,36 +565,74 @@ class campaign(object):
         y = 0
         yticks, yticks_labels = [], []
         starts, ends = [], []
-        for uname, u in self.items():
-            if skip_ship and uname == "ship":
-                continue
-            for d in u:
-                start = mdates.date2num(d.start.time)
-                end = mdates.date2num(d.end.time)
-                rect = Rectangle(
-                    (start, y - height / 2.0), end - start, height, color=u["color"]
-                )
-                ax.add_patch(rect)
-                starts.append(start)
-                ends.append(end)
-            yticks.append(y)
-            yticks_labels.append(uname)
+
+        def plot_d(d, y, label=None, color=None, **kwargs):
+            """plot deployment as single rectangle"""
+            start = mdates.date2num(d.start.time)
+            end = mdates.date2num(d.end.time)
+            rect = Rectangle(
+                (start, y - height / 2.0), end - start, height, color=color
+            )
+            ax.add_patch(rect)
+            starts.append(start)
+            ends.append(end)
+            if label is not None:
+                if color in ["black", "k"]:
+                    color_txt = "w"
+                else:
+                    color_txt = "k"
+                ax.text(start, y, label, va="center", color=color_txt)
+
+        # common deployments
+        if deployments and self.deployments:
+            for _, d in self.deployments.items():
+                _kwargs = dict(label=d.label, **d.meta)
+                # if not labels:
+                #    _kwargs.pop("label")
+                plot_d(d, y, **_kwargs)
+                yticks.append(y)
+            yticks_labels.append("deployments")
             y += -1
+
+        # platform
+        if platforms and self.platforms:
+            for p, pf in self.platforms.items():
+                if platforms and pf["deployments"]:
+                    for _, d in pf["deployments"].items():
+                        _kwargs = dict(**pf["meta"])
+                        if not labels:
+                            _kwargs.pop("label")
+                        plot_d(d, y, **_kwargs)
+                    yticks.append(y)
+                    yticks_labels.append(p)
+                    y += -1
+                #
+                if sensors and pf["sensors"]:
+                    for s, sv in pf["sensors"].items():
+                        for _, d in sv.items():
+                            _kwargs = {**sv.meta}
+                            _kwargs.pop("label")
+                            plot_d(d, y, **_kwargs)
+                        yticks.append(y)
+                        yticks_labels.append(p + " " + s)
+                        y += -1
 
         ax.set_title(self.name)
         ax.set_yticks(yticks)
         ax.set_yticklabels(yticks_labels)
-        if legend:
-            self.add_legend(ax, loc=legend, skip_ship=skip_ship)
 
         # assign date locator / formatter to the x-axis to get proper labels
         locator = mdates.AutoDateLocator(minticks=3)
         formatter = mdates.AutoDateFormatter(locator)
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(formatter)
+        if grid:
+            ax.set_axisbelow(True)
+            ax.grid()
 
         # set the limits
         delta_time = max(ends) - min(starts)
+        start_scale = 1
         plt.xlim(
             [
                 min(starts) - delta_time * 0.05 * start_scale,
@@ -518,10 +640,10 @@ class campaign(object):
             ]
         )
         plt.ylim([y + 1 - 2 * height, 2 * height])
-        print(y, y + 1 - 2 * height)
+
         return ax
 
-    def add_legend(
+    def _add_legend(
         self,
         ax,
         labels=None,
@@ -531,6 +653,7 @@ class campaign(object):
     ):
         """Add legend for units on an axis,
         Used for timelines as well as maps
+        This could be used in timeline, kept as an archive at the moment
 
         Parameters
         ----------
@@ -556,24 +679,6 @@ class campaign(object):
             custom_lines.append(Line2D([0], [0], color=c, lw=4))
         ax.legend(custom_lines, labels, **kwargs)
 
-    def timeline_old(self):
-        """older version of timeline"""
-        fig = plt.figure(figsize=(15, 5))
-        ax = fig.add_subplot(111)
-
-        y = 0
-        yticks, yticks_labels = [], []
-        for uname, u in self.items():
-            for d in u:
-                ax.plot([d.start.time, d.end.time], [y, y], lw=4, color=u["color"])
-            yticks.append(y)
-            yticks_labels.append(uname)
-            y += 1
-
-        ax.set_yticks(yticks)
-        ax.set_yticklabels(yticks_labels)
-        self.add_legend(ax, loc=2)
-
     def load(self, item, toframe=False):
         """load processed data files
         recall item
@@ -586,7 +691,7 @@ class campaign(object):
 
         # straight netcdf file
         if ".nc" in item:
-            file = os.path.join(self.pathp, item)
+            file = os.path.join(self["path_processed"], item)
             ds = xr.open_dataset(file)
             if toframe:
                 ds = ds.to_dataframe()
@@ -607,58 +712,10 @@ class campaign(object):
         else:
             return D
 
-        # !!! code below can probably be deleted
-
-        # particular units
-        if item == "ship":
-            ship_file = os.path.join(self.pathp, "ship.nc")
-            if os.path.isfile(ship_file):
-                return xr.open_dataset(ship_file).to_dataframe()
-            else:
-                return
-        elif item == "argo":
-            argo_file = os.path.join(self.pathp, "argo.nc")
-            if os.path.isfile(argo_file):
-                return xr.open_dataset(argo_file).compute()
-            else:
-                return
-
-        _files = [f.split("/")[-1] for f in data_files]
-
-        units = set(f.split("_")[0] for f in _files)
-        if unit:
-            if isinstance(unit, str):
-                units = [unit]
-            else:
-                units = [u for u in units if u in unit]
-
-        data = {}
-        for u in units:
-            _files = [
-                f.split("/")[-1]
-                for f in self._get_processed_files(
-                    unit=u,
-                    item=item,
-                )
-            ]
-            deployment_index = 2 if item is not None else 1
-            deployments = [f.split("_")[deployment_index].split(".")[0] for f in _files]
-            data[u] = {
-                d: _load_processed_file(
-                    self._get_processed_files(
-                        unit=u,
-                        item=item,
-                        deployment=d,
-                    )
-                )
-                for d in deployments
-            }
-        return data
-
     def _get_unit_files(self, unit, extension="nc"):
         """get all processed files associated with one unit"""
         files = sorted(
-            glob(os.path.join(self.pathp, unit + "*." + extension)),
+            glob(os.path.join(self["path_processed"], unit + "*." + extension)),
             key=_extract_last_digit,
         )
         # find out whether there are multiple deployments
@@ -686,7 +743,7 @@ class campaign(object):
         ----------
         unit, item, d, extention: str, optional
             Defaults: '*', '*', '*', 'nc'
-            Typical file path: self.pathp+unit+'_'+item+'_'+deployment+'.'+extension
+            Typical file path: self["path_processed"]+unit+'_'+item+'_'+deployment+'.'+extension
 
         """
         if item is None:
@@ -696,31 +753,117 @@ class campaign(object):
         if any([_ == "*" for _ in [unit, item, deployment]]):
             return glob(
                 os.path.join(
-                    self.pathp, unit + "_" + _item + deployment + "." + extension
+                    self["path_processed"],
+                    unit + "_" + _item + deployment + "." + extension,
                 )
             )
         else:
             return os.path.join(
-                self.pathp, unit + "_" + _item + deployment + "." + extension
+                self["path_processed"],
+                unit + "_" + _item + deployment + "." + extension,
             )
 
 
-def _load_processed_file(file, **kwargs):
-    """load preprocessed file, select object type based on filename"""
-    if "_gps_" in file or "_iridium" in file:
-        from .gps import gps
+_default_campaign_meta = {
+    "name": "unknown",
+    "lon": None,
+    "lat": None,
+    "start": None,
+    "end": None,
+    "bathy": None,
+    "path": None,
+    "path_raw": "",
+    "path_processed": "",
+}
 
-        return gps(file=file)
-    elif "emission" in file:
-        from .source import source_rtsys
 
-        return source_rtsys(file=file)
-    elif "ctd" in file:
-        from .ctd import ctd
+def _process_meta_campaign(cp):
+    """process meta campaign data"""
 
-        return ctd(file=file)
-    else:
-        return file + " not loaded"
+    # fill in meta information
+    meta = dict(**_default_campaign_meta)
+    meta.update(**cp["campaign"])
+
+    lon, lat = meta["lon"], meta["lat"]
+    if lon and lat:
+        # ensure coords are floats
+        lon = tuple(float(l) for l in lon)
+        lat = tuple(float(l) for l in lat)
+        meta["lon"] = lon
+        meta["lat"] = lat
+        #
+        meta["bounds"] = lon + lat
+        meta["lon_mid"] = (lon[0] + lon[1]) * 0.5
+        meta["lat_mid"] = (lat[0] + lat[1]) * 0.5
+
+    meta["start"] = pd.Timestamp(meta["start"]) if meta["start"] else None
+    meta["end"] = pd.Timestamp(meta["end"]) if meta["end"] else None
+
+    # path to raw data
+    path_raw = meta["path_raw"]
+    if path_raw:
+        if path_raw[0] != "/":
+            path_raw = os.path.join(meta["path"], meta["path_raw"])
+    meta["path_raw"] = path_raw
+
+    # path to processed data
+    path_processed = meta["path_processed"]
+    if path_processed:
+        if path_processed[0] != "/":
+            path_processed = os.path.join(meta["path"], path_processed)
+    meta["path_processed"] = path_processed
+
+    return meta
+
+
+def _process_platforms(platforms):
+    """process platforms data"""
+
+    pfs = dict()
+
+    for p, v in platforms.items():
+
+        pf = Platform()
+
+        pmeta = dict(label=p)
+        if "meta" in v:
+            pmeta.update(**v["meta"])
+        pf["meta"] = pmeta
+
+        # deployments
+        D = Deployments(meta=pmeta)
+        if "deployments" in v:
+            D.update(
+                {
+                    d: Deployment(label=d, loglines=vd)
+                    for d, vd in v["deployments"].items()
+                    if d != "meta"
+                }
+            )
+        pf["deployments"] = D
+
+        # sensors
+        sensors = dict()
+        if "sensors" in v:
+            # o["sensors"] = list(v["sensors"])
+            for s, vs in v["sensors"].items():
+                smeta = dict(**pmeta)
+                smeta.update(label=s)
+                D = Deployments(meta=smeta)
+                if "deployments" in vs:
+                    D.update(
+                        {
+                            d: Deployment(label=d, loglines=vd) if d != "meta" else vd
+                            for d, vd in vs["deployments"].items()
+                        }
+                    )
+                sensors[s] = D
+        pf["sensors"] = sensors
+
+        # store in platforms dict
+        pfs[p] = pf
+
+    return pfs
 
 
 def _extract_last_digit(filename):

@@ -19,7 +19,7 @@
 #
 import os
 import sys
-import xrft
+import pynsitu
 
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -42,6 +42,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinxcontrib.apidoc",
+    "sphinx_copybutton",
+    "sphinx_panels",
     "numpydoc",
     "nbsphinx",
     "IPython.sphinxext.ipython_console_highlighting",
@@ -65,18 +67,18 @@ source_suffix = [".rst", ".md"]
 master_doc = "index"
 
 # General information about the project.
-project = "xrft"
-copyright = "2018, xrft developers"
-author = "xrft developers"
+project = "pynsitu"
+copyright = "2022, pynsitu developers"
+author = "pynsitu developers"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = "0.1"
+version = "0.0"
 # The full version, including alpha/beta/rc tags.
-release = "0.1"
+release = "0.0"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -108,12 +110,21 @@ todo_include_todos = False
 #
 # html_theme = "sphinx_rtd_theme"
 # html_theme = 'alabaster'
+html_theme = "sphinx_book_theme"
+# inspiration: https://github.com/xgcm/xgcm/blob/master/doc/conf.py
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {
+    "repository_url": "https://github.com/apatlpo/pynsitu",
+    "repository_branch": "master",
+    "path_to_docs": "doc",
+    "use_repository_button": True,
+    "use_issues_button": True,
+    "use_edit_page_button": True,
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -124,7 +135,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "xrftdoc"
+htmlhelp_basename = "pynsitudoc"
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -148,7 +159,13 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "xrft.tex", "xrft Documentation", "xrft developers", "manual"),
+    (
+        master_doc,
+        "pynsitu.tex",
+        "pynsitu Documentation",
+        "pynsitu developers",
+        "manual",
+    ),
 ]
 
 
@@ -156,7 +173,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "xrft", "xrft Documentation", [author], 1)]
+man_pages = [(master_doc, "pynsitu", "pynsitu Documentation", [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -167,10 +184,10 @@ man_pages = [(master_doc, "xrft", "xrft Documentation", [author], 1)]
 texinfo_documents = [
     (
         master_doc,
-        "xrft",
-        "xrft Documentation",
+        "pynsitu",
+        "pynsitu Documentation",
         author,
-        "xrft",
+        "pynsitu",
         "One line description of project.",
         "Miscellaneous",
     ),

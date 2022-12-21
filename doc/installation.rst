@@ -6,30 +6,32 @@ Installation
 The quickest way
 ----------------
 
-xrft is compatible both with Python 2 and 3. The major dependencies are xarray_ and dask_.
-The best way to install them is using Anaconda_::
+pynsitu is compatible both with Python 3. The major dependencies are xarray_ and pandas_.
 
-    $ conda install -c conda-forge xarray dask xrft .
+Install dependencies via conda
+-----------------------------
 
-It is also possible to install from PyPI_ by::
+Advised way to install the required environment is via Anaconda_::
 
-    $ pip install xrft .
+    $ git clone https://github.com/apatlpo/pynsitu.git
+    $ cd pynsitu
+    $ conda create -n pynsitu python=3.10
+    $ conda env update -n pynsitu -f ci/environment.yml
 
-Install xrft from GitHub repo
+Install pynsitu from GitHub repo
 -----------------------------
 To get the latest version::
 
-    $ git clone https://github.com/xgcm/xrft.git
-    $ cd xrft
+    $ git clone https://github.com/apatlpo/pynsitu.git
+    $ cd pynsitu
     $ python setup.py install .
 
 Developers can track source code changes by::
 
-    $ git clone https://github.com/xgcm/xrft.git
-    $ cd xrft
+    $ git clone https://github.com/apatlpo/pynsitu.git
+    $ cd pynsitu
     $ python setup.py develop .
 
 .. _xarray: http://xarray.pydata.org
-.. _dask: http://dask.pydata.org/en/latest/
+.. _pandas: https://pandas.pydata.org
 .. _Anaconda: https://www.continuum.io/downloads
-.. _PyPI: https://pypi.org/

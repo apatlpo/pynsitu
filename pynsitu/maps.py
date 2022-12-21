@@ -1,18 +1,27 @@
+import os
+
 import xarray as xr
+import numpy as np
 
 from matplotlib import pyplot as plt
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-import cmocean.cm as cm
 
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import cartopy.geodesic as cgeo
+try:
+    import cmocean.cm as cm
+except:
+    print("Warning: could not import cmocean")
 
-crs = ccrs.PlateCarree()
+try:
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.io import shapereader
 
-default_resolution = "10m"
+    crs = ccrs.PlateCarree()
+except:
+    crs = None
+    print("Warning: could not import cartopy")
+
+# ------------------------------ cartopy map -----------------------------
 
 
 def plot_map(
@@ -21,30 +30,63 @@ def plot_map(
     projection=None,
     title=None,
     fig=None,
+    figsize=None,
     ax=None,
     colorbar=True,
     colorbar_kwargs={},
-    center_colormap=False,
+    centered_clims=False,
     gridlines=True,
-    dticks=(1, 1),
-    bathy=False,
+    bathy=None,
     bathy_levels=None,
-    land=True,
-    coast_resolution=None,
-    offline=False,
-    figsize=0,
+    bathy_fill=False,
+    land=False,
+    coastline="110m",
+    rivers=False,
     **kwargs,
 ):
+    """Plot a geographical map
+
+    Parameters
+    ----------
+    da: xr.DataArray, optional
+        Scalar field to plot
+    extent: str, list/tuple, optional
+        Geographical extent, "global" or [lon_min, lon_max, lat_min, lat_max]
+    projection: cartopy.crs.??, optional
+        Cartopy projection, e.g.: `projection = ccrs.Robinson()`
+    title: str, optional
+        Title
+    fig: matplotlib.figure.Figure, optional
+        Figure handle, create one if not passed
+    figsize: tuple, optional
+        Figure size, e.g. (10,5)
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    colorbar: boolean, optional
+        add colorbar (default is True)
+    colorbar_kwargs: dict, optional
+        kwargs passed to colorbar
+    centered_clims: boolean, optional
+        Center color limits (default is False)
+    gridlines: boolean, optional
+        Add grid lines (default is True)
+    bathy: str, optional
+        Plot bathymetry (default is None)
+        Need to provide path to bathymetry (see pynsitu.maps.load_bathy)
+    bathy_levels: list/tuple, optional
+        Levels of bathymetry to plot
+    bathy_fill: boolean, optional
+        Fill bathymetry with colors
+    land: boolean, str, optional
+        Add land (default is True)
+    coast_resolution: str, optional
+    """
 
     #
-    if figsize == 0:
-        _figsize = (10, 5)
-    elif figsize == 1:
-        _figsize = (20, 10)
-    else:
-        _figsize = figsize
+    if figsize is None:
+        figsize = (10, 5)
     if fig is None:
-        fig = plt.figure(figsize=_figsize)
+        fig = plt.figure(figsize=figsize)
     if extent == "global":
         proj = ccrs.Robinson()
         extent = None
@@ -61,30 +103,25 @@ def plot_map(
     if ax is None:
         ax = fig.add_subplot(111, projection=proj)
 
+    if extent is not None:
+        ax.set_extent(extent)
+
     # copy kwargs for update
     kwargs = kwargs.copy()
 
-    if center_colormap and da is not None:
+    if centered_clims and da is not None:
         vmax = float(abs(da).max())
         vmin = -vmax
         kwargs["vmin"] = vmin
         kwargs["vmax"] = vmax
 
     if bathy:
-        da = load_bathy(bathy)
-        if bathy_levels is not None:
-            CS = da.plot.contour(
-                x="longitude",
-                y="latitude",
-                ax=ax,
-                transform=crs,
-                levels=bathy_levels,
-                colors="k",
-            )
-            ax.clabel(CS, CS.levels, inline=False, fontsize=10)
-            da = None
-        else:
+        dab = load_bathy(bathy, bounds=extent)
+        if dab is not None:
+            dab = dab["depth"]
             kwargs.update(cmap=cm.deep, vmin=0)
+            if bathy_fill:
+                da = dab
 
     if da is not None:
         im = da.squeeze().plot.pcolormesh(
@@ -96,31 +133,28 @@ def plot_map(
             **kwargs,
         )
 
-    set_extent = False
-    if isinstance(extent, list) or isinstance(extent, tuple):
-        set_extent = True
+    if bathy and dab is not None:
+        if bathy_levels is not None:
+            if len(bathy_levels) == 3:
+                bathy_levels = np.arange(*bathy_levels)
+            CS = dab.plot.contour(
+                x="longitude",
+                y="latitude",
+                ax=ax,
+                transform=crs,
+                levels=bathy_levels,
+                lw=1,
+                colors="0.5",
+            )
+            ax.clabel(CS, CS.levels, inline=False, fontsize=10)
 
     # coastlines and land:
     if land:
-        dland = dict(
-            scale=default_resolution,
-            edgecolor="face",
-            facecolor=cfeature.COLORS["land"],
-        )
-        if isinstance(land, dict):
-            dland.update(**land)
-            # land = dict(args=['physical', 'land', '10m'],
-            #            kwargs= dict(edgecolor='face', facecolor=cfeature.COLORS['land']),
-            #           )
-        land_feature = cfeature.NaturalEarthFeature("physical", "land", **dland)
-        # else:
-        #    land_feature = cfeature.LAND
-        ax.add_feature(land_feature, zorder=0)
-    if coast_resolution is not None:
-        ax.coastlines(resolution=coast_resolution, color="k")
-
-    if set_extent:
-        ax.set_extent(extent)
+        _plot_land(ax, land)
+    if coastline:
+        _plot_coastline(ax, coastline)
+    if rivers:
+        _plot_rivers(ax, rivers)
 
     if da is not None and colorbar:
         # cbar = fig.colorbar(im, extend="neither", shrink=0.7, **colorbar_kwargs)
@@ -156,24 +190,219 @@ def plot_map(
             },
         )  # "fontweight": "bold"
     #
-    return {"fig": fig, "ax": ax, "cbar": cbar}
+    return fig, ax, cbar
 
 
-def load_bathy(bathy, land=False):
-    """outputs bathymetry as a dataarray with longitude, latitude coordinates"""
+def _plot_land(ax, land, **kwargs):
+    """plot land on an existing axis
 
-    if isinstance(bathy, str):
-        # must be a netcdf file
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    land: bool, str
+        True, ["10m", "50m", "110m"], or path to land shapefile
+    **kwargs: passed to plotting method
+    """
+    dkwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
+    dkwargs.update(**kwargs)
+    if isinstance(land, bool) and land:
+        land = "50m"
+    if land in ["10m", "50m", "110m"]:
+        land = cfeature.NaturalEarthFeature("physical", "land", land, **dkwargs)
+        # ax.add_feature(cfeature.LAND)
+        ax.add_feature(land)
+    elif isinstance(land, str):
+        shp = shapereader.Reader(land)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, zorder=0, **dkwargs)
+
+
+def _plot_coastline(ax, coast, **kwargs):
+    """plot coastline on an existing axis
+
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    coast: bool, str
+        True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
+    **kwargs: passed to plotting method
+    """
+    dkwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=5)
+    dkwargs.update(**kwargs)
+    if isinstance(coast, bool) and coast:
+        coast = "50m"
+    if coast in ["10m", "50m", "110m"]:
+        ax.coastlines(resolution=coast, color="k")
+    # elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
+    elif coast in ["c", "l", "i", "h", "f"]:
+        # ["coarse", "low", "intermediate", "high", "full"]
+        shpfile = shapereader.gshhs(coast)
+        shp = shapereader.Reader(shpfile)
+        ax.add_geometries(shp.geometries(), crs, **dkwargs)
+    elif isinstance(coast, str):
+        # for production, see: /Users/aponte/Data/coastlines/log
+        shp = shapereader.Reader(coast)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, **dkwargs)
+
+
+def _plot_rivers(ax, rivers, **kwargs):
+    """plot rivers on an existing axis
+
+    Parameters
+    ----------
+    ax: matplotlib.axes.Axes, optional
+        Axis handle
+    rivers: bool, str
+        True, ["10m", "50m", "110m"] or path to rivers shapefile
+    **kwargs: passed to plotting method
+    """
+    dkwargs = dict(facecolor="cadetblue", edgecolor="cadetblue", zorder=6)
+    dkwargs.update(**kwargs)
+    if isinstance(rivers, bool) and rivers:
+        rivers = "50m"
+    if rivers in ["10m", "50m", "110m"]:
+        rivers = cfeature.NaturalEarthFeature(
+            "physical", "rivers_lake_centerlines", rivers, **dkwargs
+        )
+        ax.add_feature(cfeature.RIVERS)
+    elif isinstance(rivers, str):
+        shp = shapereader.Reader(rivers)
+        for record, geometry in zip(shp.records(), shp.geometries()):
+            ax.add_geometries([geometry], crs, **dkwargs)
+
+
+# ------------------------------ bathymetry -----------------------------
+
+# etopo1
+_bathy_etopo1 = os.path.join(
+    os.getenv("HOME"),
+    "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
+)
+
+
+def load_bathy(bathy, bounds=None, steps=None, land=False):
+    """Load bathymetry
+
+    Parameters
+    ----------
+    bathy: str
+        "etopo1" or filepath to bathymetric file
+    bounds: list, tuple, optional
+        Bounds to be selected (lon_min, lon_max, lat_min, lat_max)
+    steps: list, tuple, optional
+        subsampling steps (di_lon, di_lat)
+
+    Returns
+    -------
+    ds: xr.Dataset
+        Dataset containing variables elevation and depth (=-elevation)
+
+    """
+    if bathy == "etopo1":
+        if not os.path.isfile(_bathy_etopo1):
+            return None
+        ds = xr.open_dataset(_bathy_etopo1)
+        # ds = ds.rename({'x': 'lon', 'y': 'lat', 'z': 'elevation'})
+        ds = ds.rename({"z": "elevation"})
+        if bounds is None and steps is None:
+            steps = (4, 4)
+    else:
+        if not os.path.isfile(bathy):
+            return None
         ds = xr.open_dataset(bathy)
-        if "lon" in ds:
-            ds = ds.rename(lon="longitude")
-        if "lat" in ds:
-            ds = ds.rename(lat="latitude")
-        if "elevation" in ds:
-            ds["depth"] = -ds.elevation
-            ds = ds.drop_vars("elevation")
-        da = ds.depth
+
+    if "depth" not in ds and "elevation" in ds:
+        ds["depth"] = -ds.elevation
+
     # mask land
     if not land:
-        da = da.where(da > 0)
-    return da
+        ds["depth"] = ds["depth"].where(ds["depth"] > 0)
+
+    if "lon" in ds.dims:
+        ds = ds.rename(lon="longitude")
+    if "lat" in ds.dims:
+        ds = ds.rename(lat="latitude")
+
+    assert ("longitude" in ds.dims) and (
+        "latitude" in ds.dims
+    ), f"lon, lat must be in bathymetric dataset, this not the case in {bathy}"
+
+    if steps is not None:
+        ds = ds.isel(
+            longitude=slice(0, None, steps[0]),
+            latitude=slice(0, None, steps[1]),
+        )
+
+    if bounds is not None:
+        ds = ds.sel(
+            longitude=slice(bounds[0], bounds[1]),
+            latitude=slice(bounds[2], bounds[3]),
+        )
+
+    return ds
+
+
+def plot_bathy(
+    fac,
+    levels=[-6000.0, -4000.0, -2000.0, -1000.0, -500.0, -200.0, -100.0],
+    clabel=True,
+    bathy="etopo1",
+    steps=None,
+    bounds=None,
+    **kwargs,
+):
+    fig, ax, crs = fac
+    if isinstance(levels, tuple):
+        levels = np.arange(*levels)
+    # print(levels)
+    ds = load_bathy(bathy, bounds=bounds, steps=steps)
+    cs = ax.contour(
+        ds.lon,
+        ds.lat,
+        ds.depth,
+        levels,
+        linestyles="-",
+        colors="black",
+        linewidths=0.5,
+    )
+    if clabel:
+        plt.clabel(cs, cs.levels, inline=True, fmt="%.0f", fontsize=9)
+
+
+def store_bathy_contours(
+    bathy,
+    contour_file="contours.geojson",
+    levels=[0, 100, 500, 1000, 2000, 3000],
+    **kwargs,
+):
+    """Store bathymetric contours as a geojson
+    The geojson may be used for folium plots
+    """
+
+    # Create contour data lon_range, lat_range, Z
+    depth = load_bathy(bathy, **kwargs)["depth"]
+    if isinstance(levels, tuple):
+        levels = np.arange(*levels)
+    contours = depth.plot.contour(levels=levels, cmap="gray_r")
+
+    # Convert matplotlib contour to geojson
+    from geojsoncontour import contour_to_geojson
+
+    contours_geojson = contour_to_geojson(
+        contour=contours,
+        geojson_filepath=contour_file,
+        ndigits=3,
+        unit="m",
+    )
+
+
+def load_bathy_contours(contour_file):
+    """load bathymetric contours as geojson"""
+    import geojson
+
+    with open(contour_file, "r") as f:
+        contours = geojson.load(f)
+    return contours

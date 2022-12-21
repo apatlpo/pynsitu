@@ -1,19 +1,23 @@
-name: xrft
+name: pynsitu
+channels:
+  - conda-forge
+  - defaults
 dependencies:
-  - python=3.7
-  - pandas
+  - python=3.9
   - xarray
-  - dask
-  - scipy
-  - numpy
-  - pytest
   - numpydoc
   - sphinx
   - ipython
   - jupyter
   - matplotlib
   - pandoc
+  - pip
   - pip:
     - docrep
     - nbsphinx
     - sphinxcontrib-apidoc
+    - sphinx-book-theme
+    #- pangeo-sphinx-book-theme
+    - sphinx-copybutton
+    - sphinxcontrib-srclinks
+    - sphinx-panels

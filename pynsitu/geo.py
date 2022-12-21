@@ -1,37 +1,35 @@
-import os
-
 import numpy as np
 import xarray as xr
 import pandas as pd
 
-import geopandas as gpd
-from shapely.geometry import Polygon, Point
-from shapely import wkt
-from shapely.ops import transform
-import pyproj
+# import geopandas as gpd
+# from shapely.geometry import Polygon, Point
+# from shapely import wkt
+# from shapely.ops import transform
+try:
+    import pyproj
 
-crs_wgs84 = pyproj.CRS("EPSG:4326")
-import pyinterp
+    crs_wgs84 = pyproj.CRS("EPSG:4326")
+except:
+    print("Warning: could not import pyproj")
 
 # import pyinterp.geohash as geohash
-import geojson
+# import geojson
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, datetime
-from matplotlib.colors import cnames
 
-#
-import cartopy.crs as ccrs
-from cartopy.io import shapereader
-import cartopy.feature as cfeature
+# from matplotlib.dates import date2num, datetime
+# from matplotlib.colors import cnames
 
-#
-from bokeh.io import output_notebook, show
-from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, CustomJSHover, FuncTickFormatter
-from bokeh.models import CrosshairTool
-from bokeh.plotting import figure
-
+try:
+    from bokeh.io import output_notebook, show
+    from bokeh.layouts import gridplot
+    from bokeh.models import HoverTool, CustomJSHover
+    from bokeh.models import CrosshairTool
+    from bokeh.plotting import figure
+except:
+    print("Warning: could not import bokeh")
+    CustomJSHover = lambda *args, **kargs: None
 
 # ------------------------------ parameters ------------------------------------
 
@@ -136,218 +134,6 @@ lat_hover_formatter = CustomJSHover(
     return deg + dir + " " + min.toFixed(3)
 """
 )
-
-# ----------------------------- plotting methods -------------------------------
-
-
-def plot_map(
-    fig=None,
-    region=None,
-    coast="110m",
-    land="110m",
-    rivers="110m",
-    figsize=(10, 10),
-    bounds=None,
-    cp=None,
-    grid_linewidth=1,
-    **kwargs,
-):
-    """Plot a map of the campaign area
-
-    Parameters
-    ----------
-    fig: matplotlib.figure.Figure, optional
-        Figure handle, create one if not passed
-    coast: str, optional
-        Determines which coast dataset to use, e.g. ['10m', '50m', '110m']
-    bounds: list, optional
-        Geographical bounds, e.g. [lon_min, lon_max, lat_min, lat_max]
-    cp: cognac.utils.campaign, optional
-        Campaign object
-    grid_linewidth: float, optional
-        geographical grid line width
-    """
-    crs = ccrs.PlateCarree()
-
-    if fig is None:
-        fig = plt.figure(figsize=figsize)
-    else:
-        fig.clf()
-
-    if bounds is None:
-        if cp is not None:
-            bounds = cp.bounds
-        else:
-            assert False, "bounds need to be provided somehow"
-
-    ax = fig.add_subplot(111, projection=crs)
-    ax.set_extent(bounds, crs=crs)
-    gl = ax.gridlines(
-        crs=crs,
-        draw_labels=True,
-        linewidth=grid_linewidth,
-        color="k",
-        alpha=0.5,
-        linestyle="--",
-    )
-    gl.xlabels_top = False
-    gl.ylabels_right = False
-
-    # overrides kwargs for regions
-    if region:
-        coast = region
-        land = region
-        rivers = region
-
-    #
-    _coast_root = os.getenv("HOME") + "/data/coastlines/"
-    coast_kwargs = dict(edgecolor="black", facecolor=cfeature.COLORS["land"], zorder=-1)
-    if coast in ["10m", "50m", "110m"]:
-        ax.coastlines(resolution=coast, color="k")
-    elif coast in ["auto", "coarse", "low", "intermediate", "high", "full"]:
-        shpfile = shapereader.gshhs("h")
-        shp = shapereader.Reader(shpfile)
-        ax.add_geometries(shp.geometries(), crs, **coast_kwargs)
-    elif coast == "bseine":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-    elif coast == "med":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "med/med_coast.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-    elif coast == "med_high":
-        # for production, see: /Users/aponte/Data/coastlines/log
-        shp = shapereader.Reader(_coast_root + "/med/med_high_coast.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **coast_kwargs)
-
-    #
-    _land_kwargs = dict(edgecolor="face", facecolor=cfeature.COLORS["land"])
-    if land in ["10m", "50m", "110m"]:
-        land = cfeature.NaturalEarthFeature("physical", "land", land, **_land_kwargs)
-        # ax.add_feature(cfeature.LAND)
-        ax.add_feature(land)
-    elif land == "bseine":
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_land.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **_land_kwargs)
-
-    #
-    _rivers_kwargs = dict(facecolor="none", edgecolor="blue")  # , zorder=-1
-    if rivers in ["10m", "50m", "110m"]:
-        rivers = cfeature.NaturalEarthFeature(
-            "physical", "rivers_lake_centerlines", rivers, **_rivers_kwargs
-        )
-        ax.add_feature(cfeature.RIVERS)
-    elif rivers == "bseine":
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_rivers.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, **_rivers_kwargs)
-        shp = shapereader.Reader(_coast_root + "baie_de_seine/bseine_water.shp")
-        for record, geometry in zip(shp.records(), shp.geometries()):
-            ax.add_geometries([geometry], crs, facecolor="blue", edgecolor="none")
-
-    # need to perform once more
-    ax.set_extent(bounds, crs=crs)
-
-    return [fig, ax, crs]
-
-
-# etopo1
-_bathy_etopo1 = os.path.join(
-    os.getenv("HOME"),
-    "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
-)
-
-
-def load_bathy(bathy, bounds=None, steps=None, **kwargs):
-    """Load bathymetry"""
-    if bathy == "etopo1":
-        ds = xr.open_dataset(_bathy_etopo1)
-        # ds = ds.rename({'x': 'lon', 'y': 'lat', 'z': 'elevation'})
-        ds = ds.rename({"z": "elevation"})
-        if bounds is None and steps is None:
-            steps = (4, 4)
-    else:
-        ds = xr.open_dataset(bathy)
-    assert (
-        ("lon" in ds.dims) and ("lat" in ds.dims) and ("elevation" in ds)
-    ), f"lon, lat, elevation must be in bathymetric dataset, this not the case in {bathy}"
-    if steps is not None:
-        ds = ds.isel(
-            lon=slice(0, None, steps[0]),
-            lat=slice(0, None, steps[1]),
-        )
-    if bounds is not None:
-        ds = ds.sel(
-            lon=slice(bounds[0], bounds[1]),
-            lat=slice(bounds[2], bounds[3]),
-        )
-    return ds
-
-
-def plot_bathy(
-    fac,
-    levels=[-6000.0, -4000.0, -2000.0, -1000.0, -500.0, -200.0, -100.0],
-    clabel=True,
-    bathy="etopo1",
-    steps=None,
-    bounds=None,
-    **kwargs,
-):
-    fig, ax, crs = fac
-    if isinstance(levels, tuple):
-        levels = np.arange(*levels)
-    # print(levels)
-    ds = load_bathy(bathy, bounds=bounds, steps=steps)
-    cs = ax.contour(
-        ds.lon,
-        ds.lat,
-        ds.elevation,
-        levels,
-        linestyles="-",
-        colors="black",
-        linewidths=0.5,
-    )
-    if clabel:
-        plt.clabel(cs, cs.levels, inline=True, fmt="%.0f", fontsize=9)
-
-
-def store_bathy_contours(
-    bathy,
-    contour_file="contours.geojson",
-    levels=[0, 100, 500, 1000, 2000, 3000],
-    **kwargs,
-):
-    """Store bathymetric contours as a geojson
-    The geojson may be used for folium plots
-    """
-
-    # Create contour data lon_range, lat_range, Z
-    depth = load_bathy(bathy, **kwargs)["elevation"]
-    if isinstance(levels, tuple):
-        levels = np.arange(*levels)
-    contours = depth.plot.contour(levels=levels, cmap="gray_r")
-
-    # Convert matplotlib contour to geojson
-    from geojsoncontour import contour_to_geojson
-
-    contours_geojson = contour_to_geojson(
-        contour=contours,
-        geojson_filepath=contour_file,
-        ndigits=3,
-        unit="m",
-    )
-
-
-def load_bathy_contours(contour_file):
-    """load bathymetric contours as geojson"""
-    with open(contour_file, "r") as f:
-        contours = geojson.load(f)
-    return contours
 
 
 # ----------------------------- pandas geo extension --------------------------
@@ -645,18 +431,20 @@ class GeoAccessor:
 
     def plot_bokeh(
         self,
-        unit=None,
+        deployments=None,
         rule=None,
         mindec=True,
         velocity=False,
         acceleration=False,
     ):
-        """bokeh plot
+        """Bokeh plot, useful to clean data
 
         Parameters
         ----------
-        unit:
-        rule:
+        deployments: dict-like, pynsitu.events.Deployments for instance, optional
+            Deployments
+        rule: str, optional
+            resampling rule
         mindec: boolean
             Plot longitude and latitude as minute/decimals
         """
@@ -697,25 +485,32 @@ class GeoAccessor:
         # line specs
         lw, c = 3, "black"
 
+        from .events import Deployment
+
+        if deployments is not None:
+            if isinstance(deployments, Deployment):
+                deployments = deployments.to_deployments()
+
         def _add_start_end(s, ymin, ymax=None):
             """add deployments start and end as colored vertical bars"""
             # _y = y.iloc[y.index.get_loc(_d.start.time), method='nearest')]
-            if not isinstance(ymin, float):
-                ymin = ymin.min()
             if ymax is None:
                 ymax = ymin.max()
             elif not isinstance(ymax, float):
                 ymax = ymax.max()
-            if unit is not None:
-                for _d in unit:
+            if not isinstance(ymin, float):
+                ymin = ymin.min()
+
+            if deployments is not None:
+                for label, d in deployments.items():
                     s.line(
-                        x=[_d.start.time, _d.start.time],
+                        x=[d.start.time, d.start.time],
                         y=[ymin, ymax],
                         color="cadetblue",
                         line_width=2,
                     )
                     s.line(
-                        x=[_d.end.time, _d.end.time],
+                        x=[d.end.time, d.end.time],
                         y=[ymin, ymax],
                         color="salmon",
                         line_width=2,
@@ -834,7 +629,7 @@ class GeoAccessor:
                     mode="vline",
                 )
             )
-            _add_start_end(s4, df["acceleration"])
+            _add_start_end(s4, -df["acceleration"], ymax=df["acceleration"])
             s4.add_tools(crosshair)
             S.append(s4)
         #

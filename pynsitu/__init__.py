@@ -18,7 +18,7 @@ nautical_mile = 1852  # meters
 
 
 from . import events
-from .events import campaign
+from .events import Campaign
 from . import drifters
 from . import geo
 from . import maps

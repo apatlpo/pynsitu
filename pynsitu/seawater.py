@@ -9,14 +9,19 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, datetime
 from matplotlib.colors import cnames
 
-##
-from bokeh.io import output_notebook, show
-from bokeh.layouts import gridplot
-from bokeh.models import ColumnDataSource, HoverTool, FuncTickFormatter
-from bokeh.models import CrosshairTool
-from bokeh.plotting import figure
+try:
+    from bokeh.io import output_notebook, show
+    from bokeh.layouts import gridplot
+    from bokeh.models import HoverTool
+    from bokeh.models import CrosshairTool
+    from bokeh.plotting import figure
+except:
+    print("Warning: could not import bokeh")
 
-import gsw
+try:
+    import gsw
+except:
+    print("Warning: could not import gsw")
 
 # ------------------------------ parameters ------------------------------------
 
@@ -84,6 +89,11 @@ class PdSeawaterAccessor:
             raise AttributeError("Did not find an attribute longitude")
         if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
+        # check all values of lon/lat are not NaN
+        if ~all(~pd.isna(obj[self._lon])) or ~all(~pd.isna(obj[self._lat])):
+            print(
+                "some values of longitude and latitudes are NaN, you may want to fill in with correct values"
+            )
 
         # deal now with actual seawater properties
         t, s, c, p, d = None, None, None, None, None
@@ -177,7 +187,7 @@ class PdSeawaterAccessor:
         # apply function
         df = fun(self._obj, *args, **kwargs)
         # update eos related variables
-        df = self.update_eos(inplace=False)
+        df = df.sw.update_eos(inplace=False)
         return df
 
     def resample(
@@ -229,17 +239,23 @@ class PdSeawaterAccessor:
 
     def plot_bokeh(
         self,
-        unit=None,
+        deployments=None,
         rule=None,
         plot_width=400,
-        cross=False,
+        cross=True,
     ):
-        """bokeh plot
+        """Bokeh plot, useful to clean data
 
         Parameters
         ----------
-        unit:
-        rule:
+        deployments: dict-like, pynsitu.events.Deployments for instance, optional
+            Deployments
+        rule: str, optional
+            resampling rule
+        plot_width: int, optional
+            Plot width in pixels
+        cross: boolean, optional
+            ...
         """
 
         if rule is not None:
@@ -254,18 +270,26 @@ class PdSeawaterAccessor:
         # line specs
         lw, c = 3, "black"
 
+        from .events import Deployment
+
+        if deployments is not None:
+            from .events import Deployment
+
+            if isinstance(deployments, Deployment):
+                deployments = deployments.to_deployments()
+
         def _add_start_end(s, y):
             # _y = y.iloc[y.index.get_loc(_d.start.time), method='nearest')]
-            if unit is not None:
-                for _d in unit:
+            if deployments is not None:
+                for label, d in deployments.items():
                     s.line(
-                        x=[_d.start.time, _d.start.time],
+                        x=[d.start.time, d.start.time],
                         y=[y.min(), y.max()],
                         color="cadetblue",
                         line_width=2,
                     )
                     s.line(
-                        x=[_d.end.time, _d.end.time],
+                        x=[d.end.time, d.end.time],
                         y=[y.min(), y.max()],
                         color="salmon",
                         line_width=2,

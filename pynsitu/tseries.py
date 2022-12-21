@@ -8,9 +8,15 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import date2num, datetime
 from matplotlib.colors import cnames
 
-import pytide
-import pyTMD
+try:
+    import pytide
+except:
+    print("Warning: could not import pytide")
 
+try:
+    import pyTMD
+except:
+    print("Warning: could not import pyTMD")
 
 # ------------------------------ parameters ------------------------------------
 
@@ -255,6 +261,8 @@ class XrTimeSeriesAccessor:
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self._geo_proj_ref
+            from .geo import pyproj
+
             self._geo_proj = pyproj.Proj(
                 proj="aeqd",
                 lat_0=latc,

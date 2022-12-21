@@ -63,7 +63,7 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
             validated_single_spikes.append(t)
     if verbose:
         print(
-            f"{len(validated_single_spikes)} single spikes found out {spikes.index.size}"
+            f"{len(validated_single_spikes)} single spikes dropped out of {spikes.index.size}"
             + f" potential ones (acceleration threshold)"
         )
     # drops single spikes

@@ -134,6 +134,9 @@ class Deployment(object):
                     meta = meta["meta"]
             else:
                 meta = dict()
+        # add length in days
+        meta["duration_days"] = (self.end.time - self.start.time) / pd.Timedelta("1D")
+
         self.meta = dict(**meta)
 
     def __getitem__(self, key):

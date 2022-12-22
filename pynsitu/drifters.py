@@ -123,11 +123,9 @@ def smooth_resample(
     L, I = _get_smoothing_operators(t_target, df.index, position_error, R)
 
     # x
-    # x0 = interp1d(t, df["x"], kind="cubic", fill_value="extrapolate")(t_target)
     dfi["x"] = solve(L, I.T.dot(df["x"].values))
 
     # y
-    # y0 = interp1d(t, df["y"], kind="cubic", fill_value="extrapolate")(t_target)
     dfi["y"] = solve(L, I.T.dot(df["y"].values))
 
     # update lon/lat
@@ -165,15 +163,30 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
     one_second = pd.Timedelta("1S")
     dt2 = (dt / one_second) ** 2
     D2 = diags([1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)).toarray()
-    # fix edges
+    # fix boundaries
+    # D2[0, :] = 0
+    # D2[-1, :] = 0
+    # need to impose boundary conditions or else pulls acceleration towards 0 as it is
     # D2[0, [0, 1]] = [-1/dt2, 1/dt2] # not good: pull velocity towards 0 at edges
     # D2[-1, [-2, -1]] = [-1/dt2, 1/dt2]  # not good: pull velocity towards 0 at edges
-    D2[0, :] = 0
-    D2[-1, :] = 0
+    # constant acceleration at boundaries (does not work ... weird):
+    # D2[0, [0, 1, 2, 3]] = [-1 / dt2, 3 / dt2, -3 / dt2, 1 / dt2]
+    # D2[-1, [-4, -3, -2, -1]] = [1 / dt2, -3 / dt2, 3 / dt2, -1 / dt2]
+
     # acceleration autocorrelation
     _t = t_target.values
     R = acceleration_R((_t[:, None] - _t[None, :]) / one_second)
+    # apply constraint on laplacian only on inner points (should try to impose above boundary treatment instead)
+    D2 = D2[1:-1, :]
+    R = R[1:-1, 1:-1]
+    # boundaries
+    # R[0,:] = 0
+    # R[0,0] = R[1,1]*1000
+    # R[-1,:] = 0
+    # R[-1,-1] = R[-2,-2]*1000
+    #
     iR = inv(R)
+
     # assemble final operator
     L = I.T.dot(I) + D2.T.dot(iR.dot(D2)) * position_error**2
 

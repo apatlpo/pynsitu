@@ -4,6 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - jupyterlab
   - xarray
   - zarr
   - netcdf4
@@ -15,6 +16,7 @@ dependencies:
   - geoviews
   - folium
   - cmocean
+  - xhistogram
   - xrft
   - gsw
   - pyinterp

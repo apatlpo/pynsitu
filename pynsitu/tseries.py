@@ -14,7 +14,9 @@ except:
     print("Warning: could not import pytide")
 
 try:
-    import pyTMD
+    # import pyTMD
+    # generates tons of warnings, turn off till we actually need pyTMD
+    pass
 except:
     print("Warning: could not import pyTMD")
 
@@ -119,6 +121,9 @@ class TimeSeriesAccessor:
         else:
             time = self._obj[self._time]
         df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
+        # copying is necessary to avoid warning:
+        # SettingWithCopyWarning: A value is trying to be set on a copy of a slice from a DataFrame.
+        df = df.copy()
         return df
 
     def resample_centered(self, freq):

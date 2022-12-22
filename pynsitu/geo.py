@@ -1,4 +1,7 @@
+import warnings
+
 import numpy as np
+import numpy.testing as npt
 import xarray as xr
 import pandas as pd
 
@@ -458,7 +461,7 @@ class GeoAccessor:
             acceleration and "acceleration" not in df.columns
         ):
             df = df.geo.compute_velocities()
-            df = df.geo.compute_acceleration()
+            df = df.geo.compute_accelerations()
 
         if mindec:
             _lon_tooltip = "@" + self._lon + "{custom}"
@@ -771,32 +774,44 @@ def _compute_accelerations(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        df[~df.index.duplicated(keep="first")]
+        df.drop_duplicates(keep="first", inplace=True)
 
     if not inplace:
         df = df.copy()
+
+    if not centered_velocity:
+        warnings.warn(
+            "Acceleration computation with non centered velocity", UserWarning
+        )
 
     # dt
     if time == "index":
         t = df.index.to_series()
         dt = t.diff() / pd.Timedelta("1s")
         dt.index = df.index  # necessary?
+        if "dt" in df.columns:
+            npt.assert_allclose(
+                dt[1:],  # ignores first point, which is ultimately padded below
+                df["dt"][1:],
+                atol=1e-2,
+                err_msg="dt already in present and different than derived one",
+            )
+            keep_dt = True
         df.loc[:, "dt"] = dt
     else:
         t = df[time]
         dt = t.diff() / pd.Timedelta("1s")
         df.loc[:, "dt"] = dt
-        is_uniform = df["dt"].dropna().unique().size == 1
+    # is_uniform = df["dt"].dropna().unique().size == 1
 
     # compute acc from velocities
     if from_[0] == "velocities":
         if centered_velocity:
             w = dt / (dt + dt.shift(-1))
-            ae = df[from_[1]].diff() / df.dt
-            an = df[from_[2]].diff() / df.dt
+            ae = df.loc[:, from_[1]].diff() / dt
+            an = df.loc[:, from_[2]].diff() / dt
             df.loc[:, names[0]] = ae + (ae.shift(-1) - ae) * w
             df.loc[:, names[1]] = an + (an.shift(-1) - an) * w
-            df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
         else:
             dt_acc = (dt.shift(-1) + dt) * 0.5
             df.loc[:, names[0]] = (df[from_[1]].shift(-1) - df[from_[1]]) / dt_acc
@@ -880,9 +895,9 @@ def _compute_velocities(
         Contains columns names for eastern, northen and norm velocities
         ("velocity_east", "velocity_north", "velocity" by default
     centered: boolean
-        Centers velocity calculation temporally (True by default).
+        Centers velocity calculation temporally
     fill_startend : boolean
-        fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        fill dataframe start and end (Nan values due to the derivation/centering method) (True by default)
     distance: str, optional
         Method to compute distances.
         Default is geoid ("WGS84" with pyproj).
@@ -905,7 +920,10 @@ def _compute_velocities(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        df[~df.index.duplicated(keep="first")]
+        df.drop_duplicates(keep="first", inplace=True)
+
+    if not centered:
+        warnings.warn("Velocity computation is not centered", UserWarning)
 
     # dt_i = t_i - t_{i-1}
     if time == "index":
@@ -917,7 +935,7 @@ def _compute_velocities(
         t = df[time]
         dt = t.diff() / pd.Timedelta("1s")
         df.loc[:, "dt"] = dt
-    is_uniform = df["dt"].dropna().unique().size == 1
+    # is_uniform = df["dt"].dropna().unique().size == 1
 
     if distance == "geoid":
         from pyproj import Geod
@@ -940,9 +958,18 @@ def _compute_velocities(
         w = dt / (dt + dt.shift(-1))
         df.loc[:, names[0]] = dxdt + (dxdt.shift(-1) - dxdt) * w
         df.loc[:, names[1]] = dydt + (dydt.shift(-1) - dydt) * w
+        # boundaries, impose constant acceleration
+        i0, i1 = df.index[[0, -1]]
+        # print( dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1]), dxdt[1], dxdt[2], dt[1] / dt[2] )
+        df.loc[i0, names[0]] = dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1])
+        df.loc[i0, names[1]] = dydt[1] - dt[1] / dt[2] * (dydt[2] - dydt[1])
+        df.loc[i1, names[0]] = dxdt[-2] + dt[-1] / dt[-2] * (dxdt[-2] - dxdt[-3])
+        df.loc[i1, names[1]] = dydt[-2] + dt[-1] / dt[-2] * (dydt[-2] - dydt[-3])
     else:
         df.loc[:, names[0]] = dxdt
         df.loc[:, names[1]] = dydt
+        # boundaries ?
+
     df.loc[:, names[2]] = np.sqrt(df.loc[:, names[0]] ** 2 + df.loc[:, names[1]] ** 2)
 
     if not keep_dt:

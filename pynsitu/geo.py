@@ -223,9 +223,7 @@ class GeoAccessor:
         assert ("x" in d.columns) and (
             "y" in d.columns
         ), "x/y coordinates must be available"
-        d.loc[:, self._lon], d.loc[:, self._lat] = self.projection.xy2lonlat(
-            d["x"], d["y"]
-        )
+        d[self._lon], d[self._lat] = self.projection.xy2lonlat(d["x"], d["y"])
 
     # time series and/or campaign related material
 
@@ -425,13 +423,6 @@ class GeoAccessor:
 
     # ---- plotting
 
-    def plot_lonlat(self):
-        """simple lon/lat plot"""
-        # plot this array's data on a map, e.g., using Cartopy
-        df = self._obj
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(df[self._lon], df[self._lat])
-
     def plot_bokeh(
         self,
         deployments=None,
@@ -440,7 +431,7 @@ class GeoAccessor:
         velocity=False,
         acceleration=False,
     ):
-        """Bokeh plot, useful to clean data
+        """Plot time series: longitude, latitude, velocities, acceleration
 
         Parameters
         ----------
@@ -639,71 +630,37 @@ class GeoAccessor:
         p = gridplot(S, ncols=2)
         show(p)
 
-    def plot_bokeh_map(self, unit=None, rule=None, mindec=True):
-        """bokeh plot"""
+    def plot_on_map(self, rule=None, coords="geo", **kwargs):
+        """Produce map with trajectory on map
+        Requires geoviews
+
+        Parameters
+        ----------
+        rule: str, optional
+            resampling rule
+        coords: str, optional
+            Controls coordinates:
+                - "xy": x/y space
+                - "geo": geographical coordinates (lon/lat)
+        **kwargs: passed to hvplot
+        """
+
+        dkwargs = dict(hover_cols=["time"], frame_width=500, frame_height=400)
+        if coords == "geo":
+            coords = dict(x=self._lon, y=self._lat, geo=True)
+            dkwargs["tiles"] = "CartoLight"
+        elif coords == "xy":
+            self.project()
+            coords = dict(x="x", y="y")
+        dkwargs = dict(**coords, **dkwargs)
+        dkwargs.update(**kwargs)
 
         if rule is not None:
             df = self.resample(rule)
         else:
             df = self._obj
-        # ensure we have projection
-        self.project()
 
-        if mindec:
-            _lon_tooltip = "@" + self._lon + "{custom}"
-            _lat_tooltip = "@" + self._lat + "{custom}"
-            _lon_formatter = lon_hover_formatter
-            _lat_formatter = lat_hover_formatter
-            # ll_formater = FuncTickFormatter(code="""
-            #    return Math.floor(tick) + " + " + (tick % 1).toFixed(2)
-            # """)
-        else:
-            _lon_tooltip = "@{" + self._lon + "}{0.4f}"
-            _lat_tooltip = "@{" + self._lat + "}{0.4f}"
-            _lon_formatter = "printf"
-            _lat_formatter = "printf"
-
-        output_notebook()
-        TOOLS = "pan,wheel_zoom,box_zoom,reset,help"
-
-        # line specs
-        lw = 5
-        c = "black"
-
-        # create a new plot and add a renderer
-        s1 = figure(
-            tools=TOOLS,
-            plot_width=600,
-            plot_height=600,
-            title="map",
-            match_aspect=True,  # if projected for equal axis
-            # x_axis_type='datetime',
-        )
-        s1.line("x", "y", source=df, line_width=lw, color=c)
-        s1.add_tools(
-            HoverTool(
-                tooltips=[
-                    ("Time", "@time{%F %T}"),
-                    ("longitude", _lon_tooltip),
-                    ("latitude", _lat_tooltip),
-                ],
-                formatters={
-                    "@time": "datetime",
-                    "@" + self._lon: _lon_formatter,
-                    "@" + self._lat: _lat_formatter,
-                },
-                # mode='vline'
-            )
-        )
-
-        p = gridplot(
-            [
-                [
-                    s1,
-                ]
-            ]
-        )
-        show(p)
+        return df.hvplot.points(**_kwargs), coords
 
 
 def _step_trajectory(df, t, x, y, ds, dt_max):

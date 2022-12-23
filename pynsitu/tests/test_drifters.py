@@ -45,8 +45,8 @@ def test_despike_isolated(sample_drifter_data):
     # this is more than expected, why !?!?
 
 
-def test_smooth_resample(sample_drifter_data):
+def test_resample_smooth(sample_drifter_data):
     """test smooth_resample, just run the code for now"""
     df = sample_drifter_data.geo.compute_velocities()  # to compute x/y
     t_target = pd.date_range(df.index[0], df.index[-1], freq="30T")
-    df_smooth = pyn.drifters.smooth_resample(df, t_target, 100, 1e-4, 86400.0)
+    df_smooth = pyn.drifters.resample_smooth(df, t_target, 100, 1e-4, 86400.0)

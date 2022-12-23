@@ -660,7 +660,7 @@ class GeoAccessor:
         else:
             df = self._obj
 
-        return df.hvplot.points(**_kwargs), coords
+        return df.hvplot.points(**dkwargs), coords
 
 
 def _step_trajectory(df, t, x, y, ds, dt_max):

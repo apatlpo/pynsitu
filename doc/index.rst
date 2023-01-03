@@ -32,6 +32,7 @@ Documentation
    :caption: Examples
 
    example_events
+   example_drifters
 
 .. toctree::
    :maxdepth: 1

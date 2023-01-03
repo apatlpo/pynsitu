@@ -40,13 +40,22 @@ class PdSeawaterAccessor:
             - practical salinity or conductivity, accepted names are:
                 ["salinity", "psal", "s"]
                 ["conductivity", "cond", "c"]
-            - pressure (dbar) or depth (m), accepted names:
+            - pressure or depth, accepted names:
                 ["pressure", "p"]
                 ["depth"]
+        Accepted units ares:
+            - temperature: degC
+            - practical salinity: PSU
+            - conductivity: mS/m
+            - pressure: dbar
+            - depth: m
         Longitude and Latitude are treated differently and may be columns or
         attributes or in the `attrs` dictionnary
         """
-        self._t, self._s, self._c, self._p = self._validate(pandas_obj)
+        try:
+            self._t, self._s, self._c, self._p = self._validate(pandas_obj)
+        except:
+            print("sw accessor inititation not successul, please set adequate column names manually")
         self._obj = pandas_obj
         self._update_SA_PT()
 
@@ -157,6 +166,14 @@ class PdSeawaterAccessor:
             df.loc[:, "CT"] = gsw.CT_from_t(df["SA"], t, p)
         if "sigma0" not in df.columns:
             df.loc[:, "sigma0"] = gsw.sigma0(df["SA"], df["CT"])
+
+    def set_columns(self, **kwargs):
+        """ set accessor column names: t, s, c, p, d, lon, lat
+        and update internal eos variables (SA, PT)
+        """
+        for k, v in kwargs.items():
+            setattr(self, "_"+k, v)
+        self._update_SA_PT()
 
     def update_eos(self, inplace=True):
         """update eos related variables (e.g. in situ temperature, practical

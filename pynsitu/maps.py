@@ -279,10 +279,11 @@ def _plot_rivers(ax, rivers, **kwargs):
 # ------------------------------ bathymetry -----------------------------
 
 # etopo1
-_bathy_etopo1 = os.path.join(
-    os.getenv("HOME"),
-    "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
-)
+from . import config
+if "bathy" in config and "etopo1" in config["bathy"]:
+    _bathy_etopo1 = config["bathy"]["etopo1"]
+else:
+    _bathy_etopo1 = None
 
 
 def load_bathy(bathy, bounds=None, steps=None, land=False):

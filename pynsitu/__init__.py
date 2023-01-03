@@ -11,26 +11,29 @@ __all__ = [
 ]
 
 # deal with config file
-import os
+try:
+    import os
 
-_config_dir = os.path.expanduser("~/.config/pynsitu/")
-_config_file = os.path.join(_config_dir, "pynsitu.yaml")
-# create a config directory if necessary
-if not os.path.isdir(_config_dir):
-    os.mkdir(_config_dir)
-# copy config file if need be
-if not os.path.isfile(_config_file):
-    import importlib.resources as importlib_resources
+    _config_dir = os.path.expanduser("~/.config/pynsitu/")
+    _config_file = os.path.join(_config_dir, "pynsitu.yaml")
+    # create a config directory if necessary
+    if not os.path.isdir(_config_dir):
+        os.mkdir(_config_dir)
+    # copy config file if need be
+    if not os.path.isfile(_config_file):
+        import importlib.resources as importlib_resources
 
-    pyn_path = importlib_resources.files("pynsitu")
-    import shutil
+        pyn_path = importlib_resources.files("pynsitu")
+        import shutil
 
-    shutil.copy(os.path.join(pyn_path, "pynsitu.yaml"), _config_file)
-# load config
-import yaml
+        shutil.copy(os.path.join(pyn_path, "pynsitu.yaml"), _config_file)
+    # load config
+    import yaml
 
-with open(_config_file) as file:
-    config = yaml.load(file, Loader=yaml.FullLoader)
+    with open(_config_file) as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+except:
+    config = dict()
 
 # various parameters
 from .geo import deg2rad, rad2deg, g, deg2m

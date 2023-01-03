@@ -79,7 +79,9 @@ def plot_map(
         Fill bathymetry with colors
     land: boolean, str, optional
         Add land (default is True)
-    coast_resolution: str, optional
+    coastline: str, optional
+        True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
+    rivers: boolean, optional
     """
 
     #
@@ -277,10 +279,12 @@ def _plot_rivers(ax, rivers, **kwargs):
 # ------------------------------ bathymetry -----------------------------
 
 # etopo1
-_bathy_etopo1 = os.path.join(
-    os.getenv("HOME"),
-    "Data/bathy/etopo1/zarr/ETOPO1_Ice_g_gmt4.zarr",
-)
+from . import config
+
+if "bathy" in config and "etopo1" in config["bathy"]:
+    _bathy_etopo1 = config["bathy"]["etopo1"]
+else:
+    _bathy_etopo1 = None
 
 
 def load_bathy(bathy, bounds=None, steps=None, land=False):
@@ -302,7 +306,7 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
 
     """
     if bathy == "etopo1":
-        if not os.path.isfile(_bathy_etopo1):
+        if not os.path.isdir(_bathy_etopo1):
             return None
         ds = xr.open_dataset(_bathy_etopo1)
         # ds = ds.rename({'x': 'lon', 'y': 'lat', 'z': 'elevation'})

@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 
 from numpy.linalg import inv
 from scipy.linalg import solve
 from scipy.sparse import diags
+from scipy.special import erf
 
 from .geo import GeoAccessor
 
@@ -52,14 +54,13 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
         C = []
         # check for a double sign reversal of acceleration
         for _dir in ["east", "north"]:
-            _dir = "east"
             if t > df.index[0] and t < df.index[-1]:
                 am = df.loc[:t, "acceleration_" + _dir].iloc[-2]
                 a = spikes.loc[t, "acceleration_" + _dir]
                 ap = df.loc[t:, "acceleration_" + _dir].iloc[1]
-            # check if am and ap have opposite sign to a
-            C.append(am * a < 0 and ap * a < 0)
-        if all(C):
+                # check if am and ap have opposite sign to a
+                C.append(am * a < 0 and ap * a < 0)
+        if len(C) > 0 and any(C):
             validated_single_spikes.append(t)
     if verbose:
         print(
@@ -71,13 +72,14 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
     return df
 
 
-def smooth_resample(
+def resample_smooth(
     df,
     t_target,
     position_error,
     acceleration_amplitude,
     acceleration_T,
     velocity_acceleration=True,
+    time_chunk=2,
 ):
     """Smooth and resample a drifter position time series
     The smoothing balances positions information according to the specified
@@ -105,7 +107,106 @@ def smooth_resample(
         Acceleration decorrelation timescale in seconds
     velocity_acceleration: boolean, optional
         Updates velocity and acceleration
+    time_chunk: int/float
+        Maximum time chunk (in days) to process at once.
+        Data is processed by chunks and patched together.
     """
+
+    T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
+
+    # store projection to align with dataframes produced
+    proj = df.geo.projection_reference
+
+    if T < time_chunk * 1.1:
+
+        dfi = _resample_smooth_one(
+            df,
+            t_target,
+            position_error,
+            acceleration_amplitude,
+            acceleration_T,
+        )
+
+    else:
+
+        print(f"Chunking dataframe into {time_chunk} days chunks")
+        # divide target timeline into chunks
+        D = _divide_into_time_chunks(t_target, time_chunk, overlap=0.3)
+        # split computation
+        delta = pd.Timedelta("3H")
+        R = []
+        for time in D:
+            df_chunk = df.loc[
+                (df.index > time[0] - delta) & (df.index < time[-1] + delta)
+            ]
+            df_chunk.geo.set_projection_reference(proj)
+            df_chunk_smooth = _resample_smooth_one(
+                df_chunk, time, position_error, acceleration_amplitude, acceleration_T
+            )
+            R.append(df_chunk_smooth)
+
+        # brute concatenation: introduce strong discontinuities in velocity/acceleration
+        # dfi = pd.concat(R)
+        # removes duplicated times
+        # dfi = dfi.loc[~dfi.index.duplicated(keep="first")]
+
+        ## patch timeseries together, not that simple ...
+
+        col_nums = [c for c in df.columns if is_numeric_dtype(df[c].dtype)]
+        i = 0
+        while i < len(R) - 1:
+            if i == 0:
+                df_left = R[i]
+            else:
+                df_left = df_right
+            df_right = R[i + 1]
+            delta = df_left.index[-1] - df_right.index[0]
+            t_mid = df_right.index[0] + delta * 0.5
+
+            # bring time series on a common timeline
+            index = df_left.index.union(df_right.index)
+            df_left = df_left.reindex(index, method=None)
+            df_right = df_right.reindex(index, method=None)
+
+            # build weights
+            w = (1 - erf((df_left.index.to_series() - t_mid) * 5 / delta)) * 0.5
+            # note: the width in the error function needs to be much smaller than delta.
+            # Discontinuities visible on acceleration are visible otherwise
+            # A factor 5 is chosen here
+
+            df_left = df_left.fillna(df_right)
+            df_right = df_right.fillna(df_left)
+
+            # patch
+            for c in col_nums:
+                df_right.loc[:, c] = df_left.loc[:, c] * w + df_right.loc[:, c] * (
+                    1 - w
+                )
+
+            i += 1
+
+        dfi = df_right
+        dfi.geo.set_projection_reference(proj)
+        # lon/lat are updated in _resample_smooth_one but x/y have been modified
+        # with the patching and hence need to be recomputed
+        dfi.geo.compute_lonlat()  # inplace
+
+    # recompute velocity, should be an option?
+    if velocity_acceleration:
+        dfi = dfi.geo.compute_velocities()
+        dfi = dfi.geo.compute_accelerations()
+
+    return dfi
+
+
+def _resample_smooth_one(
+    df,
+    t_target,
+    position_error,
+    acceleration_amplitude,
+    acceleration_T,
+):
+    """core processing for resample_smooth, process one time window"""
 
     # init final structure
     dfi = (
@@ -123,22 +224,15 @@ def smooth_resample(
     L, I = _get_smoothing_operators(t_target, df.index, position_error, R)
 
     # x
-    # x0 = interp1d(t, df["x"], kind="cubic", fill_value="extrapolate")(t_target)
     dfi["x"] = solve(L, I.T.dot(df["x"].values))
 
     # y
-    # y0 = interp1d(t, df["y"], kind="cubic", fill_value="extrapolate")(t_target)
     dfi["y"] = solve(L, I.T.dot(df["y"].values))
 
     # update lon/lat
     # first reset reference from df
-    dfi.geo.set_projection_reference(df.geo.projection_reference)  # inplace
+    dfi.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
     dfi.geo.compute_lonlat()  # inplace
-
-    # recompute velocity, should be an option?
-    if velocity_acceleration:
-        dfi = dfi.geo.compute_velocities()
-        dfi = dfi.geo.compute_accelerations()
 
     return dfi
 
@@ -157,27 +251,75 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
     Nt = t_target.size
     I = np.zeros((t.size, Nt))
     i_t = np.searchsorted(t_target, t)
-    w = (t - t_target[i_t - 1]) / dt
-    I[:, i_t - 1] = np.diagflat(w, k=0)
-    I[:, i_t] = np.diagflat(1 - w, k=0)
+    i = np.where((i_t > 0) & (i_t < Nt))[0]
+    j = i_t[i]
+    w = (t[i] - t_target[j - 1]) / dt
+    I[i, j - 1] = w
+    I[i, j] = 1 - w
 
     # second order derivative
     one_second = pd.Timedelta("1S")
     dt2 = (dt / one_second) ** 2
     D2 = diags([1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)).toarray()
-    # fix edges
+    # fix boundaries
+    # D2[0, :] = 0
+    # D2[-1, :] = 0
+    # need to impose boundary conditions or else pulls acceleration towards 0 as it is
     # D2[0, [0, 1]] = [-1/dt2, 1/dt2] # not good: pull velocity towards 0 at edges
     # D2[-1, [-2, -1]] = [-1/dt2, 1/dt2]  # not good: pull velocity towards 0 at edges
-    D2[0, :] = 0
-    D2[-1, :] = 0
+    # constant acceleration at boundaries (does not work ... weird):
+    # D2[0, [0, 1, 2, 3]] = [-1 / dt2, 3 / dt2, -3 / dt2, 1 / dt2]
+    # D2[-1, [-4, -3, -2, -1]] = [1 / dt2, -3 / dt2, 3 / dt2, -1 / dt2]
+
     # acceleration autocorrelation
     _t = t_target.values
     R = acceleration_R((_t[:, None] - _t[None, :]) / one_second)
+    # apply constraint on laplacian only on inner points (should try to impose above boundary treatment instead)
+    D2 = D2[1:-1, :]
+    R = R[1:-1, 1:-1]
+    # boundaries
+    # R[0,:] = 0
+    # R[0,0] = R[1,1]*1000
+    # R[-1,:] = 0
+    # R[-1,-1] = R[-2,-2]*1000
+    #
     iR = inv(R)
+
     # assemble final operator
     L = I.T.dot(I) + D2.T.dot(iR.dot(D2)) * position_error**2
 
     return L, I
+
+
+def _divide_into_time_chunks(time, T, overlap=0.1):
+    """Divide a dataframe into chunks of duration T (in days)
+
+    Parameters
+    ----------
+    time: pd.DatetimeIndex
+        Timeseries
+    T: float
+        Size of time chunks in days
+
+    """
+    Td = pd.Timedelta("1D") * T
+
+    # assumes time is the index
+    t_first = time[0]
+    t_last = time[-1]
+
+    t = t_first
+    D = []
+    while t < t_last:
+        # try to keep a chunk of size T even last one
+        if t + Td > t_last:
+            tb = max(t_last - Td, t_first)
+            start, end = tb, tb + Td
+        else:
+            start, end = t, t + Td
+        D.append(time[(time >= start) & (time <= end)])
+        t = t + Td * (1 - overlap)
+    return D
 
 
 # ------------------------ time window processing -------------------------------

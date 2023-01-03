@@ -280,6 +280,7 @@ def _plot_rivers(ax, rivers, **kwargs):
 
 # etopo1
 from . import config
+
 if "bathy" in config and "etopo1" in config["bathy"]:
     _bathy_etopo1 = config["bathy"]["etopo1"]
 else:

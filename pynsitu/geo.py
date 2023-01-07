@@ -645,7 +645,7 @@ class GeoAccessor:
         **kwargs: passed to hvplot
         """
 
-        dkwargs = dict(hover_cols=["time"], frame_width=500, frame_height=400)
+        dkwargs = dict(hover_cols=["time"], frame_width=400, frame_height=400)
         if coords == "geo":
             coords = dict(x=self._lon, y=self._lat, geo=True)
             dkwargs["tiles"] = "CartoLight"

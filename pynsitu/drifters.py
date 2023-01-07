@@ -152,7 +152,8 @@ def resample_smooth(
 
         ## patch timeseries together, not that simple ...
 
-        col_nums = [c for c in df.columns if is_numeric_dtype(df[c].dtype)]
+        col_float = [c for c in df.columns if np.issubdtype(df[c].dtype, float)]
+        # note: is_numeric_dtype(df[c].dtype) lets int pass through
         i = 0
         while i < len(R) - 1:
             if i == 0:
@@ -165,6 +166,8 @@ def resample_smooth(
 
             # bring time series on a common timeline
             index = df_left.index.union(df_right.index)
+
+            # 
             df_left = df_left.reindex(index, method=None)
             df_right = df_right.reindex(index, method=None)
 
@@ -177,8 +180,8 @@ def resample_smooth(
             df_left = df_left.fillna(df_right)
             df_right = df_right.fillna(df_left)
 
-            # patch
-            for c in col_nums:
+            # patch values with float dtypes
+            for c in col_float:
                 df_right.loc[:, c] = df_left.loc[:, c] * w + df_right.loc[:, c] * (
                     1 - w
                 )
@@ -186,6 +189,10 @@ def resample_smooth(
             i += 1
 
         dfi = df_right
+        # fix non float dtypes
+        for c in dfi.columns:
+            dfi[c] = dfi[c].astype(df[c].dtype)
+        # reproject
         dfi.geo.set_projection_reference(proj)
         # lon/lat are updated in _resample_smooth_one but x/y have been modified
         # with the patching and hence need to be recomputed
@@ -210,12 +217,10 @@ def _resample_smooth_one(
 
     # init final structure
     dfi = (
-        df.reindex(df.index.union(t_target), method=None)
-        .interpolate(method="time")
-        .bfill()
-        .ffill()
+        df.reindex(df.index.union(t_target), method="nearest")
         .reindex(t_target)
     )
+    # providing "nearest" above is essential to preserve type (on int64 data typically)
     dfi.index.name = "time"
 
     # exponential acceleration autocorrelation

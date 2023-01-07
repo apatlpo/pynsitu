@@ -852,6 +852,8 @@ def _process_platforms(platforms):
             for s, vs in v["sensors"].items():
                 smeta = dict(**pmeta)
                 smeta.update(label=s)
+                if "meta" in vs:
+                    smeta.update(**vs["meta"])
                 D = Deployments(meta=smeta)
                 if "deployments" in vs:
                     D.update(

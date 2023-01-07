@@ -35,9 +35,14 @@ try:
 except:
     config = dict()
 
-# various parameters
+# useful parameters
 from .geo import deg2rad, rad2deg, g, deg2m
-
+#
+from pandas import Timedelta
+day = Timedelta("1D")
+hour = Timedelta("1H")
+second = Timedelta("1s")
+#
 knot = 0.514
 nautical_mile = 1852  # meters
 

@@ -323,7 +323,7 @@ class GeoAccessor:
             inplace=inplace,
         )
 
-        if not inplace :
+        if not inplace:
             return df
 
     def compute_accelerations(
@@ -731,11 +731,11 @@ def _compute_accelerations(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        if df.index.duplicated(keep="first").any() : 
+        if df.index.duplicated(keep="first").any():
             df.reset_index(inplace=True)
             df.drop_duplicates(subset="time", keep="first", inplace=True)
             df.set_index("time", inplace=True)
-        #df.drop_duplicates(keep="first", inplace=True)# drop all nan lines, does not consider the index time -> pb
+        # df.drop_duplicates(keep="first", inplace=True)# drop all nan lines, does not consider the index time -> pb
 
     if not inplace:
         df = df.copy()
@@ -881,7 +881,7 @@ def _compute_velocities(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        if df.index.duplicated(keep="first").any() :
+        if df.index.duplicated(keep="first").any():
             df.reset_index(inplace=True)
             df.drop_duplicates(subset="time", keep="first", inplace=True)
             df.set_index("time", inplace=True)
@@ -922,7 +922,7 @@ def _compute_velocities(
         w = dt / (dt + dt.shift(-1))
         df.loc[:, names[0]] = dxdt + (dxdt.shift(-1) - dxdt) * w
         df.loc[:, names[1]] = dydt + (dydt.shift(-1) - dydt) * w
-        
+
         # boundaries, impose constant acceleration
         i0, i1 = df.index[[0, -1]]
         # print( dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1]), dxdt[1], dxdt[2], dt[1] / dt[2] )

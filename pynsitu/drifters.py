@@ -167,7 +167,7 @@ def resample_smooth(
             # bring time series on a common timeline
             index = df_left.index.union(df_right.index)
 
-            # 
+            #
             df_left = df_left.reindex(index, method=None)
             df_right = df_right.reindex(index, method=None)
 
@@ -216,10 +216,7 @@ def _resample_smooth_one(
     """core processing for resample_smooth, process one time window"""
 
     # init final structure
-    dfi = (
-        df.reindex(df.index.union(t_target), method="nearest")
-        .reindex(t_target)
-    )
+    dfi = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
     # providing "nearest" above is essential to preserve type (on int64 data typically)
     dfi.index.name = "time"
 

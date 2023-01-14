@@ -1,12 +1,11 @@
-import os
-
 import numpy as np
 import xarray as xr
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, datetime
-from matplotlib.colors import cnames
+
+# from matplotlib.dates import date2num, datetime
+# from matplotlib.colors import cnames
 
 try:
     import pytide
@@ -15,8 +14,9 @@ except:
 
 try:
     import pyTMD
+
     # generates tons of warnings, turn off till we actually need pyTMD
-    #pass
+    # pass
 except:
     print("Warning: could not import pyTMD")
 
@@ -126,19 +126,17 @@ class TimeSeriesAccessor:
 
     # resampling
     def resample_uniform(self, rule, inplace=False, **kwargs):
-        """ resample on a uniform time line via interpolation"""
+        """resample on a uniform time line via interpolation"""
         df = self._obj
         if not self._time_index:
             df = df.set_index(self._time)
-        # leverage standard pandas resampling to 
+        # leverage standard pandas resampling to get new time line
         new_time = df.resample(rule).count().index
-        df_interp = (df
-        .reindex(new_time.union(df.index))
-        .interpolate(**kwargs)
-        .reindex(new_time)
+        df_interp = (
+            df.reindex(new_time.union(df.index)).interpolate(**kwargs).reindex(new_time)
         )
         # does not perform the same operation
-        #df = df.resample(rule).interpolate(**kwargs)
+        # df = df.resample(rule).interpolate(**kwargs)
         if inplace:
             self._obj = df_interp
         else:
@@ -266,8 +264,10 @@ class XrTimeSeriesAccessor:
                 + "/".join(time_potential)
             )
         else:
-            assert len(obj[time].dims)==1, "time variable should be one dimensional"
-            assert time == obj[time].dims[0], "time/date variable and dimenion are not labelled identically, this is not supported at the moment"
+            assert len(obj[time].dims) == 1, "time variable should be one dimensional"
+            assert (
+                time == obj[time].dims[0]
+            ), "time/date variable and dimenion are not labelled identically, this is not supported at the moment"
             return time
 
     def _reset_tseries(self):
@@ -308,7 +308,9 @@ class XrTimeSeriesAccessor:
         """add physical time to object"""
         ds = self._obj
         if "timep" not in ds.variables or overwrite:
-            ds["timep"] = (ds[self._time] - self.time_reference) / self.delta_time_reference
+            ds["timep"] = (
+                ds[self._time] - self.time_reference
+            ) / self.delta_time_reference
 
     # time series and/or campaign related material
     def trim(self, d, inplace=False):

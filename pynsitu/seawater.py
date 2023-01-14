@@ -482,7 +482,7 @@ class XrSeawaterAccessor:
 
     def update_eos(self, ds=None, overwrite=True):
         if ds is None:
-            ds = self._obj  # .copy()
+            ds = self._obj
         sa, ct, p = ds["SA"], ds["CT"], ds[self._p]
         if self._t not in ds or overwrite:
             ds[self._t] = gsw.t_from_CT(sa, ct, p)
@@ -490,7 +490,6 @@ class XrSeawaterAccessor:
             ds[self._s] = gsw.SP_from_SA(sa, p, self._lon, self._lat)
         if "sigma0" not in ds or overwrite:
             ds["sigma0"] = gsw.sigma0(sa, ct)
-        return ds
 
     def apply_with_eos_update(self, fun, *args, **kwargs):
         """apply a function and update eos related variables"""
@@ -539,6 +538,8 @@ class XrSeawaterAccessor:
         ds = self._obj
         if "sigma0" not in ds:
             sigma0 = gsw.sigma0(ds.SA, ds.CT)
+        else:
+            sigma0 = ds.sigma0
         return sigma0
 
     @property
@@ -576,16 +577,18 @@ def plot_ts(s_lim, t_lim, figsize=None):
     n = 100
     ds = xr.Dataset(
         dict(
-            salinity=("salinity", np.linspace(*s_lim, n)),
-            temperature=("temperature", np.linspace(*t_lim, n)),
+            s=("s", np.linspace(*s_lim, n), dict(long_name="salinity")),
+            t=("t", np.linspace(*t_lim, n), dict(long_name="temperature")),
         )
     )
-    ds["pressure"] = 1.0
+    ds["temperature"] = ds["t"] + ds["s"]*0
+    ds["salinity"] = ds["t"]*0 + ds["s"]
+    ds["pressure"] = 1.0 + ds["salinity"]*0
     ds["longitude"] = 0.0
     ds["latitude"] = 49.0
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    cs = ds.sw.sigma0.plot.contour(x="salinity", ax=ax, colors="k")
+    cs = ds.sw.sigma0.plot.contour(x="s", ax=ax, colors="k")
     ax.clabel(cs, inline=1, fontsize=10)
     ax.grid()
 

@@ -203,9 +203,6 @@ class GeoAccessor:
         if self._geo_proj is None:
             lonc, latc = self.projection_reference
             self._geo_proj = projection(lonc, latc)
-            # self._geo_proj = pyproj.Proj(proj="aeqd",
-            #                             lat_0=latc, lon_0=lonc,
-            #                             datum="WGS84", units="m")
         return self._geo_proj
 
     def project(self, overwrite=True):
@@ -744,6 +741,7 @@ def _compute_accelerations(
     # dt
     if time == "index":
         t = df.index.to_series()
+        assert t.is_monotonic_increasing, "dataframe must be sorted along time"
         dt = t.diff() / pd.Timedelta("1s")
         dt.index = df.index  # necessary?
         if "dt" in df.columns:
@@ -756,6 +754,7 @@ def _compute_accelerations(
             keep_dt = True
         df.loc[:, "dt"] = dt
     else:
+        assert df[time].is_monotonic_increasing, "dataframe must be sorted along time"
         t = df[time]
         dt = t.diff() / pd.Timedelta("1s")
         df.loc[:, "dt"] = dt
@@ -990,53 +989,26 @@ class XrGeoAccessor:
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self._geo_proj_ref
-            self._geo_proj = pyproj.Proj(
-                proj="aeqd",
-                lat_0=latc,
-                lon_0=lonc,
-                datum="WGS84",
-                units="m",
-            )
+            self._geo_proj = projection(lonc, latc)
         return self._geo_proj
 
     def project(self, overwrite=True, **kwargs):
         """add (x,y) projection to object"""
         d = self._obj
-        dkwargs = dict(vectorize=True)
-        dkwargs.update(**kwargs)
         if "x" not in d.variables or "y" not in d.variables or overwrite:
-            proj = self.projection.transform
-            if True:
-                _x, _y = proj(
-                    d[self._lon],
-                    d[self._lat],
-                )
-                dims = d[self._lon].dims
-                d["x"], d["y"] = (dims, _x), (dims, _y)
-            else:
-                d["x"], d["y"] = xr.apply_ufunc(
-                    self.projection.transform, d[self._lon], d[self._lat], **dkwargs
-                )
+            _x, _y = self.projection.lonlat2xy(d[self._lon], d[self._lat])
+            dims = d[self._lon].dims
+            d["x"], d["y"] = (dims, _x), (dims, _y)
+        else:
+            print("project silently fails")
 
     def compute_lonlat(self, x=None, y=None, **kwargs):
         """update longitude and latitude from projected coordinates"""
         d = self._obj
-        assert ("x" in d.variables) and (
-            "y" in d.variables
-        ), "x/y coordinates must be available"
-        dkwargs = dict()
-        dkwargs.update(**kwargs)
-        if x is not None and y is not None:
-            lon, lat = _xy2lonlat(x, y, proj=self.projection)
-            return (x.dims, lon), (x.dims, lat)
-        else:
-            d[self._lon], d[self._lat] = xr.apply_ufunc(
-                _xy2lonlat,
-                d["x"],
-                d["y"],
-                kwargs=dict(proj=self.projection),
-                **dkwargs,
-            )
+        if x is None and y is None:
+            x, y = d["x"], d["y"]
+        lon, lat = self.projection.xy2lonlat(x, y)
+        return (x.dims, lon), (x.dims, lat)
 
     # time series related code
 

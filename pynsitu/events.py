@@ -739,7 +739,7 @@ class Campaign(object):
             keys = [f.split("/")[-1].replace(".nc", "") for f in files]
         else:
             files = sorted(
-                glob(os.path.join(self["path_processed"], item+"_*.nc")),
+                glob(os.path.join(self["path_processed"], item + "_*.nc")),
             )
             keys = [
                 f.split("/")[-1].replace(item + "_", "").replace(".nc", "")

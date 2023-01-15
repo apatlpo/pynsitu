@@ -581,9 +581,9 @@ def plot_ts(s_lim, t_lim, figsize=None):
             t=("t", np.linspace(*t_lim, n), dict(long_name="temperature")),
         )
     )
-    ds["temperature"] = ds["t"] + ds["s"]*0
-    ds["salinity"] = ds["t"]*0 + ds["s"]
-    ds["pressure"] = 1.0 + ds["salinity"]*0
+    ds["temperature"] = ds["t"] + ds["s"] * 0
+    ds["salinity"] = ds["t"] * 0 + ds["s"]
+    ds["pressure"] = 1.0 + ds["salinity"] * 0
     ds["longitude"] = 0.0
     ds["latitude"] = 49.0
 

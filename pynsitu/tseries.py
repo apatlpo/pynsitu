@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 import xarray as xr
@@ -324,7 +325,16 @@ class XrTimeSeriesAccessor:
 # -------------------------- spectral analysis ----------------------------------
 
 
-def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
+def get_spectrum(
+    v,
+    N,
+    dt=None,
+    N_fill_limit=24,
+    method="periodogram",
+    detrend=False,
+    nan_ratio=0.1,
+    **kwargs,
+):
     """Compute a lagged correlation between two time series
     These time series are assumed to be regularly sampled in time
     and along the same time line.
@@ -336,20 +346,64 @@ def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
             Length of the output
         dt: float, optional
             Time step
+        N_fill_limit : int
+            Limit length of Nan gap filled by interpolatation
         method: string
             Method that will be employed for spectral calculations.
             Default is 'periodogram'
         detrend: str or function or False, optional
             Turns detrending on or off. Default is False.
+        nan_ratio : float between 0 and 1
+            limit of nan value ratio tolerated in time series
+            default is 0.1
+    CAUTION : if v ndarray need to give dt
     See:
         - https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.signal.periodogram.html
         - https://krischer.github.io/mtspec/
         - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
     """
     if v is None:
-        _v = np.random.randn(N)
+        _v = pd.Series(np.random.randn(N))
+
+    elif not isinstance(v, pd.Series):
+        v = pd.Series(
+            v
+        )  # harmonising type (solving pb np.ndarray -> isnan(), pd.Series ->isna(), iloc pb)
+
+    # returned spectrum is nan array if to many nan holes
+    elif (
+        v.iloc[:N].isna().sum() / N >= nan_ratio
+    ):  # Avoids computing spectra where a large part of value come from interpolation
+        warnings.warn(
+            f"Nan values ratio {round(100 * v.iloc[:N].isna().sum()/N)}% exceeds the {100*nan_ratio}% tolerated limit, replace spectrum by nan array",
+            UserWarning,
+        )
+        _v = pd.Series(np.full(N, np.nan), v.index[:N])
+
+    # fill little nan hole by interpolation
+    elif N_fill_limit is not None:
+        mask = v.isna()
+        x = (
+            mask.groupby((mask != mask.shift()).cumsum()).transform(
+                lambda x: len(x) > N_fill_limit
+            )
+            * mask
+        )  # True in holes bigger than N_fill_limit
+        if x.any():
+            warnings.warn(
+                f"Hole(s) bigger than the tolerated length for interpolation {N_fill_limit}, replace spectrum by nan array",
+                UserWarning,
+            )
+            _v = pd.Series(np.full(N, np.nan), v.index[:N])
+        else:
+            _v = v.interpolate(
+                method="quadratic"
+            )  # interpolate on hole smaller than N_fill_limit
+            _v = _v.iloc[:N]
+
     else:
         _v = v.iloc[:N]
+
     if dt is None:
         dt = _v.reset_index()["index"].diff().mean()
 

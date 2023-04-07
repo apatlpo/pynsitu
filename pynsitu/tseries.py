@@ -1,6 +1,8 @@
 import numpy as np
-import xarray as xr
 import pandas as pd
+import xarray as xr
+
+from scipy import signal
 
 import matplotlib.pyplot as plt
 
@@ -334,6 +336,73 @@ class XrTimeSeriesAccessor:
     # signal processing ...
 
 
+# -------------------------- filtering ----------------------------------
+
+def generate_filter(
+    band,
+    T=10,
+    dt=1 / 24,
+    lat=None,
+    bandwidth=None,
+    normalized_bandwidth=None,
+):
+    """Wrapper around scipy.signal.firwing
+
+    Parameters
+    ----------
+    band: str, float
+        Frequency band (e.g. "semidiurnal", ...) or filter central frequency in cpd
+    T: float
+        Filter length in days
+    dt: float
+        Filter/time series time step
+    lat: float
+        Latitude (for inertial band)
+    bandwidth: float
+        Filter bandwidth in cpd
+    dt: float
+        days
+    """
+    numtaps = int(T / dt)
+    pass_zero = False
+    #
+    if band == "low":
+        pass_zero = True
+        cutoff = [bandwidth]
+    elif band == "subdiurnal":
+        pass_zero = True
+        cutoff = [1.0 / 2.0]
+    elif band == "semidiurnal":
+        omega = 1.9322  #  M2 24/12.4206012 = 1.9322
+    elif band == "diurnal":
+        omega = 1.0  # K1 24/23.93447213 = 1.0027
+    elif band == "inertial":
+        assert lat is not None, "latitude needs to be provided to generate_filter"
+        from .geo import coriolis
+        omega = coriolis(lat) / 2.0 / np.pi
+    elif isinstance(band, float):
+        omega = band
+    #
+    if bandwidth is not None and band != "low":
+        cutoff = [omega - bandwidth, omega + bandwidth]
+    elif normalized_bandwidth is not None:
+        cutoff = [
+            omega * (1 - normalized_bandwidth),
+            omega * (1.0 + normalized_bandwidth),
+        ]
+    #
+    h = signal.firwin(
+        numtaps, cutoff=cutoff, pass_zero=pass_zero, fs=1 / dt, scale=True
+    )
+    return h
+
+
+def filter_response(h, dt=1 / 24):
+    """Returns the frequency response"""
+    w, hh = signal.freqz(h, worN=8000, fs=1 / dt)
+    return hh, w
+
+
 # -------------------------- spectral analysis ----------------------------------
 
 
@@ -533,3 +602,6 @@ def load_equilibrium_constituents(c=None):
         p_names = ["amplitude", "phase", "omega", "alpha", "species"]
         p = pyTMD.load_constituent(c)
         return pd.Series({_n: _p for _n, _p in zip(p_names, p)})
+
+
+

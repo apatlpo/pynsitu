@@ -7,7 +7,7 @@ from scipy.linalg import solve
 from scipy.sparse import diags
 from scipy.special import erf
 
-from .geo import GeoAccessor
+from pynsitu.geo import GeoAccessor, compute_velocities, compute_accelerations
 
 
 # ------------------------ drifter data cleaning --------------------------------
@@ -80,6 +80,7 @@ def resample_smooth(
     acceleration_T,
     velocity_acceleration=True,
     time_chunk=2,
+    geo=True,
 ):
     """Smooth and resample a drifter position time series
     The smoothing balances positions information according to the specified
@@ -107,17 +108,24 @@ def resample_smooth(
         Acceleration decorrelation timescale in seconds
     velocity_acceleration: boolean, optional
         Updates velocity and acceleration
-    time_chunk: int/float
+    time_chunk: int/float, optional
         Maximum time chunk (in days) to process at once.
         Data is processed by chunks and patched together.
+    geo: boolean, optional
+
     """
 
+    # enforce t_target type
+    t_target = pd.DatetimeIndex(t_target)
+
+    # Time series length in days
     T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
 
     # store projection to align with dataframes produced
-    proj = df.geo.projection_reference
+    if geo:
+        proj = df.geo.projection_reference
 
-    if T < time_chunk * 1.1:
+    if not time_chunk or T < time_chunk * 1.1:
 
         dfi = _resample_smooth_one(
             df,
@@ -125,6 +133,7 @@ def resample_smooth(
             position_error,
             acceleration_amplitude,
             acceleration_T,
+            geo,
         )
 
     else:
@@ -139,9 +148,15 @@ def resample_smooth(
             df_chunk = df.loc[
                 (df.index > time[0] - delta) & (df.index < time[-1] + delta)
             ]
-            df_chunk.geo.set_projection_reference(proj)
+            if geo:
+                df_chunk.geo.set_projection_reference(proj)
             df_chunk_smooth = _resample_smooth_one(
-                df_chunk, time, position_error, acceleration_amplitude, acceleration_T
+                df_chunk,
+                time,
+                position_error,
+                acceleration_amplitude,
+                acceleration_T,
+                geo,
             )
             R.append(df_chunk_smooth)
 
@@ -190,18 +205,27 @@ def resample_smooth(
 
         dfi = df_right
         # fix non float dtypes
-        for c in dfi.columns:
-            dfi[c] = dfi[c].astype(df[c].dtype)
-        # reproject
-        dfi.geo.set_projection_reference(proj)
-        # lon/lat are updated in _resample_smooth_one but x/y have been modified
-        # with the patching and hence need to be recomputed
-        dfi.geo.compute_lonlat()  # inplace
+        # for c in dfi.columns:
+        #    dfi[c] = dfi[c].astype(df[c].dtype)
+        if geo:
+            # reproject
+            dfi.geo.set_projection_reference(proj)
+            # lon/lat are updated in _resample_smooth_one but x/y have been modified
+            # with the patching and hence need to be recomputed
+            dfi.geo.compute_lonlat()  # inplace
 
     # recompute velocity, should be an option?
-    if velocity_acceleration:
+    if velocity_acceleration and geo:
         dfi = dfi.geo.compute_velocities()
         dfi = dfi.geo.compute_accelerations()
+        # should still recompute for non-geo datasets
+    else:
+        dfi = compute_velocities(
+            dfi, "x", "y", "index", ("u", "v", "uv"), True, True, None
+        )
+        dfi = compute_accelerations(
+            dfi, ("xy", "x", "y"), ("ax", "ay", "axy"), True, "index", False, True, False,
+        )
 
     return dfi
 
@@ -212,12 +236,24 @@ def _resample_smooth_one(
     position_error,
     acceleration_amplitude,
     acceleration_T,
+    geo,
 ):
     """core processing for resample_smooth, process one time window"""
 
     # init final structure
     dfi = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
     # providing "nearest" above is essential to preserve type (on int64 data typically)
+    # override with interpolation for float data
+    col_float = [
+        c for c in df.columns if np.issubdtype(df[c].dtype, float)
+    ]  # could skip x/y: and c not in ["x", "y"]
+    for c in col_float:
+        dfi[c] = (
+            df[c]
+            .reindex(df.index.union(t_target))
+            .interpolate("time")
+            .reindex(t_target)
+        )
     dfi.index.name = "time"
 
     # exponential acceleration autocorrelation
@@ -232,9 +268,10 @@ def _resample_smooth_one(
     dfi["y"] = solve(L, I.T.dot(df["y"].values))
 
     # update lon/lat
-    # first reset reference from df
-    dfi.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
-    dfi.geo.compute_lonlat()  # inplace
+    if geo:
+        # first reset reference from df
+        dfi.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
+        dfi.geo.compute_lonlat()  # inplace
 
     return dfi
 

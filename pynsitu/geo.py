@@ -48,6 +48,7 @@ omega_earth = 2.0 * np.pi / 86164.0905
 
 
 def coriolis(lat, signed=True):
+    """ returns Coriolis frequency in 1/s"""
     if signed:
         return 2.0 * omega_earth * np.sin(lat * deg2rad)
     else:
@@ -307,7 +308,7 @@ class GeoAccessor:
         """
         if "x" not in self._obj.columns or "y" not in self._obj.columns:
             self.project()
-        df = _compute_velocities(
+        df = compute_velocities(
             self._obj,
             self._lon,
             self._lat,
@@ -361,7 +362,7 @@ class GeoAccessor:
         inplace : boolean
             if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed acceleration
         """
-        df = _compute_accelerations(
+        df = compute_accelerations(
             self._obj,
             from_,
             names,
@@ -682,7 +683,7 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
     return t, x, y, dfm
 
 
-def _compute_accelerations(
+def compute_accelerations(
     df,
     from_,
     names,
@@ -775,7 +776,7 @@ def _compute_accelerations(
 
     # compute acc from positions in lonlat
     elif from_[0] == "lonlat":
-        df_v = _compute_velocities(
+        df_v = compute_velocities(
             df,
             from_[1],
             from_[2],
@@ -823,7 +824,7 @@ def _compute_accelerations(
         return df
 
 
-def _compute_velocities(
+def compute_velocities(
     df,
     lon_key,
     lat_key,
@@ -846,7 +847,8 @@ def _compute_velocities(
     lat_key: str
            latitude column name in dataframe
     time: str
-        Column name. Default is "index", i.e. considers the index
+        Column name corresponding to time.
+        Can be "index", in which case the index is used
     names :  tuple
         Contains columns names for eastern, northen and norm velocities
         ("velocity_east", "velocity_north", "velocity" by default

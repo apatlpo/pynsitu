@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
@@ -431,6 +432,7 @@ def time_window_processing(
         df.geo.project()
         proj = df.geo.projection
     #
+
     # drop duplicated values
     df = df.drop_duplicates(subset="date")
     # p = p.where(p.time.diff() != 0).dropna() # duplicates - old

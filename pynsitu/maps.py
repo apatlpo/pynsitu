@@ -36,12 +36,14 @@ def plot_map(
     colorbar_kwargs={},
     centered_clims=False,
     gridlines=True,
+    gridkwargs=None,
     bathy=None,
     bathy_levels=None,
     bathy_fill=False,
     land=False,
     coastline="110m",
     rivers=False,
+    tile=None,
     **kwargs,
 ):
     """Plot a geographical map
@@ -100,6 +102,21 @@ def plot_map(
             central_longitude=_lon_central,
             central_latitude=_lat_central,
         )
+    if tile is not None:
+        import cartopy.io.img_tiles as cimgt
+
+        if isinstance(tile, tuple):
+            tile_level = tile[1]
+            tile = tile[0]
+        else:
+            tile = "terrain"  # 'terrain-background'
+            # https://wiki.openstreetmap.org/wiki/Zoom_levels
+            # https://leaflet-extras.github.io/leaflet-providers/preview/
+            tile_level = 11
+        stamen_terrain = cimgt.Stamen(tile, cache="/tmp/cartopy_cache")
+        # about caching: https://github.com/SciTools/cartopy/pull/1533
+        projection = stamen_terrain.crs
+
     if projection is not None:
         proj = projection
     if ax is None:
@@ -107,6 +124,11 @@ def plot_map(
 
     if extent is not None:
         ax.set_extent(extent)
+
+    if tile is not None:
+        if isinstance(tile, int):
+            tile_level = tile
+        ax.add_image(stamen_terrain, tile_level)
 
     # copy kwargs for update
     kwargs = kwargs.copy()
@@ -175,12 +197,16 @@ def plot_map(
         cbar = None
 
     if gridlines:
-        gl = ax.gridlines(
+        gkwargs = dict(
             draw_labels=True,
             dms=False,
             x_inline=False,
             y_inline=False,
         )
+        if gridkwargs is not None:
+            gkwargs.update(gridkwargs)
+        gl = ax.gridlines(**gkwargs)
+        # https://scitools.org.uk/cartopy/docs/v0.13/matplotlib/gridliner.html
         gl.right_labels = False
         gl.top_labels = False
 

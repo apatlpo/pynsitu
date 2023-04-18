@@ -1,12 +1,15 @@
-import os
+import warnings
 
 import numpy as np
-import xarray as xr
 import pandas as pd
+import xarray as xr
+
+from scipy import signal
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num, datetime
-from matplotlib.colors import cnames
+
+# from matplotlib.dates import date2num, datetime
+# from matplotlib.colors import cnames
 
 try:
     import pytide
@@ -14,9 +17,10 @@ except:
     print("Warning: could not import pytide")
 
 try:
-    # import pyTMD
+    import pyTMD
+
     # generates tons of warnings, turn off till we actually need pyTMD
-    pass
+    # pass
 except:
     print("Warning: could not import pyTMD")
 
@@ -65,8 +69,6 @@ class TimeSeriesAccessor:
         self._time_ref = None
         self._delta_time_ref = None
         self._tidal_harmonics = None
-        # self._obj.drop(columns=["x", "y"], errors="ignore", inplace=True)
-        pass
 
     @property
     def time(self):
@@ -126,6 +128,24 @@ class TimeSeriesAccessor:
         df = df.copy()
         return df
 
+    # resampling
+    def resample_uniform(self, rule, inplace=False, **kwargs):
+        """resample on a uniform time line via interpolation"""
+        df = self._obj
+        if not self._time_index:
+            df = df.set_index(self._time)
+        # leverage standard pandas resampling to get new time line
+        new_time = df.resample(rule).count().index
+        df_interp = (
+            df.reindex(new_time.union(df.index)).interpolate(**kwargs).reindex(new_time)
+        )
+        # does not perform the same operation
+        # df = df.resample(rule).interpolate(**kwargs)
+        if inplace:
+            self._obj = df_interp
+        else:
+            return df
+
     def resample_centered(self, freq):
         """centered resampling, i.e. data at t is representative
         of data within [t-dt/2, t+dt/2]
@@ -146,9 +166,11 @@ class TimeSeriesAccessor:
         df = df.shift(0.5, freq=freq).resample(freq)
         return df
 
+    # signal processing
     def spectrum(self, method="welch"):
         pass
 
+    # tidal analysis
     def tidal_analysis(
         self,
         col,
@@ -156,7 +178,7 @@ class TimeSeriesAccessor:
         library="pytide",
         plot=True,
     ):
-        """compute a tidal analysis on a column
+        """compute a tidal analysis on one column
 
         Parameters
         ----------
@@ -194,6 +216,7 @@ class TimeSeriesAccessor:
     def tidal_predict(
         self,
         col=None,
+        time=None,
         amplitudes=None,
         constituents=None,
         library="pytide",
@@ -206,6 +229,8 @@ class TimeSeriesAccessor:
                 f"not amplitudes found for {col} or provided, "
                 + "you need to run an harmonic analysis first"
             )
+        if time is None:
+            time = self.time
         if amplitudes is None:
             amplitudes = self._tidal_harmonics[col]["amplitude"]
         if constituents is not None:
@@ -214,9 +239,9 @@ class TimeSeriesAccessor:
             amplitudes = amplitudes.loc[constituents]
 
         if library == "pytide":
-            s = pytide_predict_tides(self.time, amplitudes, **kwargs)
+            s = pytide_predict_tides(time, amplitudes, **kwargs)
 
-        return pd.Series(s, index=self.time, name=f"{col}_tidal")
+        return pd.Series(s, index=time, name=f"{col}_tidal")
 
 
 # ----------------------------- xarray accessor --------------------------------
@@ -225,106 +250,176 @@ class TimeSeriesAccessor:
 @xr.register_dataset_accessor("ts")
 class XrTimeSeriesAccessor:
     def __init__(self, xarray_obj):
-        assert False, "This accessor has not been implemented yet"
-        self._lon, self._lat = self._validate(xarray_obj)
+        self._time = self._validate(xarray_obj)
         self._obj = xarray_obj
-        self._reset_geo()
+        self._reset_tseries()
 
     # @staticmethod
     def _validate(self, obj):
         """verify there are latitude and longitude variables"""
-        lon, lat = None, None
-        lat_potential = ["lat", "latitude"]
-        lon_potential = ["lon", "longitude"]
+        time = None
+        time_potential = ["time", "date"]
         for c in list(obj.variables):
-            if c.lower() in lat_potential:
-                lat = c
-            elif c.lower() in lon_potential:
-                lon = c
-        if not lat or not lon:
+            if c.lower() in time_potential:
+                time = c
+        if not time:
             raise AttributeError(
-                "Did not find latitude and longitude variables. Case insentive options are: "
-                + "/".join(lat_potential)
-                + " , "
-                + "/".join(lon_potential)
+                "Did not find time variables. Case insentive options are: "
+                + "/".join(time_potential)
             )
         else:
-            return lon, lat
+            assert len(obj[time].dims) == 1, "time variable should be one dimensional"
+            assert (
+                time == obj[time].dims[0]
+            ), "time/date variable and dimenion are not labelled identically, this is not supported at the moment"
+            return time
 
-    def _reset_geo(self):
-        """reset all variables related to geo"""
-        self._geo_proj_ref = None
-        self._geo_proj = None
-
-    def set_projection_reference(self, ref, reset=True):
-        """set projection reference point, (lon, lat) tuple"""
-        if reset:
-            self._reset_geo()
-        self._geo_proj_ref = ref
+    def _reset_tseries(self):
+        """reset all variables related to accessor"""
+        self._time_ref = None
+        self._delta_time_ref = None
+        self._tidal_harmonics = None
 
     @property
-    def projection(self):
-        if self._geo_proj is None:
-            lonc, latc = self._geo_proj_ref
-            from .geo import pyproj
+    def time(self):
+        """return time (may have a different name)"""
+        return self._obj[self._time]
 
-            self._geo_proj = pyproj.Proj(
-                proj="aeqd",
-                lat_0=latc,
-                lon_0=lonc,
-                datum="WGS84",
-                units="m",
-            )
-        return self._geo_proj
+    @property
+    def time_reference(self):
+        """define a reference time if none is available"""
+        if self._time_ref is None:
+            # default value
+            self._time_ref = pd.Timestamp("2010-01-01")
+        return self._time_ref
 
-    def project(self, overwrite=True, **kwargs):
-        """add (x,y) projection to object"""
-        d = self._obj
-        dkwargs = dict(vectorize=True)
-        dkwargs.update(**kwargs)
-        if "x" not in d.variables or "y" not in d.variables or overwrite:
-            proj = self.projection.transform
-            if True:
-                _x, _y = proj(
-                    d[self._lon],
-                    d[self._lat],
-                )
-                dims = d[self._lon].dims
-                d["x"], d["y"] = (dims, _x), (dims, _y)
-            else:
-                d["x"], d["y"] = xr.apply_ufunc(
-                    self.projection.transform, d[self._lon], d[self._lat], **dkwargs
-                )
+    @property
+    def delta_time_reference(self):
+        """define a reference time if none is available"""
+        if self._delta_time_ref is None:
+            # default value
+            self._delta_time_ref = pd.Timedelta("1s")
+        return self._delta_time_ref
 
-    def compute_lonlat(self, x=None, y=None, **kwargs):
-        """update longitude and latitude from projected coordinates"""
-        d = self._obj
-        assert ("x" in d.variables) and (
-            "y" in d.variables
-        ), "x/y coordinates must be available"
-        dkwargs = dict()
-        dkwargs.update(**kwargs)
-        if x is not None and y is not None:
-            lon, lat = _xy2lonlat(x, y, proj=self.projection)
-            return (x.dims, lon), (x.dims, lat)
+    def set_time_reference(self, time_ref=None, dt=None, reset=True):
+        """set time references"""
+        if reset:
+            self._reset_tseries()
+        self._time_ref = time_ref
+        self._delta_ref = time_ref
+
+    def time_physical(self, overwrite=True):
+        """add physical time to object"""
+        ds = self._obj
+        if "timep" not in ds.variables or overwrite:
+            ds["timep"] = (
+                ds[self._time] - self.time_reference
+            ) / self.delta_time_reference
+
+    # time series and/or campaign related material
+    def trim(self, d, inplace=False):
+        """given a deployment item, trim data"""
+        ds = self._obj.sel({self._time: slice(d.start.time, d.end.time)})
+        if inplace:
+            self._obj = ds
         else:
-            d[self._lon], d[self._lat] = xr.apply_ufunc(
-                _xy2lonlat,
-                d["x"],
-                d["y"],
-                kwargs=dict(proj=self.projection),
-                **dkwargs,
-            )
+            return ds
 
-    # time series related code
+    # resample on regular time line
+    def resample(self, freq, inplace=False):
+        ds, t = self._obj, self._time
+        new_time = pd.date_range(ds[t].values[0], ds[t].values[-1], freq=freq)
+        dsi = ds.interp(**{t: new_time})
+        if inplace:
+            self._obj = dsi
+        else:
+            return dsi
 
-    # speed ...
+    # signal processing ...
+
+
+# -------------------------- filtering ----------------------------------
+
+
+def generate_filter(
+    band,
+    T=10,
+    dt=1 / 24,
+    lat=None,
+    bandwidth=None,
+    normalized_bandwidth=None,
+):
+    """Wrapper around scipy.signal.firwing
+
+    Parameters
+    ----------
+    band: str, float
+        Frequency band (e.g. "semidiurnal", ...) or filter central frequency in cpd
+    T: float
+        Filter length in days
+    dt: float
+        Filter/time series time step
+    lat: float
+        Latitude (for inertial band)
+    bandwidth: float
+        Filter bandwidth in cpd
+    dt: float
+        days
+    """
+    numtaps = int(T / dt)
+    pass_zero = False
+    #
+    if band == "low":
+        pass_zero = True
+        cutoff = [bandwidth]
+    elif band == "subdiurnal":
+        pass_zero = True
+        cutoff = [1.0 / 2.0]
+    elif band == "semidiurnal":
+        omega = 1.9322  #  M2 24/12.4206012 = 1.9322
+    elif band == "diurnal":
+        omega = 1.0  # K1 24/23.93447213 = 1.0027
+    elif band == "inertial":
+        assert lat is not None, "latitude needs to be provided to generate_filter"
+        from .geo import coriolis
+
+        omega = coriolis(lat) / 2.0 / np.pi
+    elif isinstance(band, float):
+        omega = band
+    #
+    if bandwidth is not None and band != "low":
+        cutoff = [omega - bandwidth, omega + bandwidth]
+    elif normalized_bandwidth is not None:
+        cutoff = [
+            omega * (1 - normalized_bandwidth),
+            omega * (1.0 + normalized_bandwidth),
+        ]
+    #
+    h = signal.firwin(
+        numtaps, cutoff=cutoff, pass_zero=pass_zero, fs=1 / dt, scale=True
+    )
+    return h
+
+
+def filter_response(h, dt=1 / 24):
+    """Returns the frequency response"""
+    w, hh = signal.freqz(h, worN=8000, fs=1 / dt)
+    return hh, w
 
 
 # -------------------------- spectral analysis ----------------------------------
 
 
-def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
+def get_spectrum(
+    v,
+    N,
+    dt=None,
+    N_fill_limit=24,
+    method="periodogram",
+    detrend=False,
+    nan_ratio=0.1,
+    **kwargs,
+):
     """Compute a lagged correlation between two time series
     These time series are assumed to be regularly sampled in time
     and along the same time line.
@@ -336,20 +431,64 @@ def get_spectrum(v, N, dt=None, method="periodogram", detrend=False, **kwargs):
             Length of the output
         dt: float, optional
             Time step
+        N_fill_limit : int
+            Limit length of Nan gap filled by interpolatation
         method: string
             Method that will be employed for spectral calculations.
             Default is 'periodogram'
         detrend: str or function or False, optional
             Turns detrending on or off. Default is False.
+        nan_ratio : float between 0 and 1
+            limit of nan value ratio tolerated in time series
+            default is 0.1
+    CAUTION : if v ndarray need to give dt
     See:
         - https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.signal.periodogram.html
         - https://krischer.github.io/mtspec/
         - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
     """
     if v is None:
-        _v = np.random.randn(N)
+        _v = pd.Series(np.random.randn(N))
+
+    elif not isinstance(v, pd.Series):
+        v = pd.Series(
+            v
+        )  # harmonising type (solving pb np.ndarray -> isnan(), pd.Series ->isna(), iloc pb)
+
+    # returned spectrum is nan array if to many nan holes
+    elif (
+        v.iloc[:N].isna().sum() / N >= nan_ratio
+    ):  # Avoids computing spectra where a large part of value come from interpolation
+        warnings.warn(
+            f"Nan values ratio {round(100 * v.iloc[:N].isna().sum()/N)}% exceeds the {100*nan_ratio}% tolerated limit, replace spectrum by nan array",
+            UserWarning,
+        )
+        _v = pd.Series(np.full(N, np.nan), v.index[:N])
+
+    # fill little nan hole by interpolation
+    elif N_fill_limit is not None:
+        mask = v.isna()
+        x = (
+            mask.groupby((mask != mask.shift()).cumsum()).transform(
+                lambda x: len(x) > N_fill_limit
+            )
+            * mask
+        )  # True in holes bigger than N_fill_limit
+        if x.any():
+            warnings.warn(
+                f"Hole(s) bigger than the tolerated length for interpolation {N_fill_limit}, replace spectrum by nan array",
+                UserWarning,
+            )
+            _v = pd.Series(np.full(N, np.nan), v.index[:N])
+        else:
+            _v = v.interpolate(
+                method="quadratic"
+            )  # interpolate on hole smaller than N_fill_limit
+            _v = _v.iloc[:N]
+
     else:
         _v = v.iloc[:N]
+
     if dt is None:
         dt = _v.reset_index()["index"].diff().mean()
 

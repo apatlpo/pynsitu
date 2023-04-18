@@ -48,6 +48,7 @@ omega_earth = 2.0 * np.pi / 86164.0905
 
 
 def coriolis(lat, signed=True):
+    """returns Coriolis frequency in 1/s"""
     if signed:
         return 2.0 * omega_earth * np.sin(lat * deg2rad)
     else:
@@ -203,9 +204,6 @@ class GeoAccessor:
         if self._geo_proj is None:
             lonc, latc = self.projection_reference
             self._geo_proj = projection(lonc, latc)
-            # self._geo_proj = pyproj.Proj(proj="aeqd",
-            #                             lat_0=latc, lon_0=lonc,
-            #                             datum="WGS84", units="m")
         return self._geo_proj
 
     def project(self, overwrite=True):
@@ -310,7 +308,7 @@ class GeoAccessor:
         """
         if "x" not in self._obj.columns or "y" not in self._obj.columns:
             self.project()
-        df = _compute_velocities(
+        df = compute_velocities(
             self._obj,
             self._lon,
             self._lat,
@@ -364,7 +362,7 @@ class GeoAccessor:
         inplace : boolean
             if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed acceleration
         """
-        df = _compute_accelerations(
+        df = compute_accelerations(
             self._obj,
             from_,
             names,
@@ -645,7 +643,7 @@ class GeoAccessor:
         **kwargs: passed to hvplot
         """
 
-        dkwargs = dict(hover_cols=["time"], frame_width=500, frame_height=400)
+        dkwargs = dict(hover_cols=["time"], frame_width=400, frame_height=400)
         if coords == "geo":
             coords = dict(x=self._lon, y=self._lat, geo=True)
             dkwargs["tiles"] = "CartoLight"
@@ -685,7 +683,7 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
     return t, x, y, dfm
 
 
-def _compute_accelerations(
+def compute_accelerations(
     df,
     from_,
     names,
@@ -731,7 +729,11 @@ def _compute_accelerations(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        df.drop_duplicates(keep="first", inplace=True)
+        if df.index.duplicated(keep="first").any():
+            df.reset_index(inplace=True)
+            df.drop_duplicates(subset="time", keep="first", inplace=True)
+            df.set_index("time", inplace=True)
+        # df.drop_duplicates(keep="first", inplace=True)# drop all nan lines, does not consider the index time -> pb
 
     if not inplace:
         df = df.copy()
@@ -744,6 +746,7 @@ def _compute_accelerations(
     # dt
     if time == "index":
         t = df.index.to_series()
+        assert t.is_monotonic_increasing, "dataframe must be sorted along time"
         dt = t.diff() / pd.Timedelta("1s")
         dt.index = df.index  # necessary?
         if "dt" in df.columns:
@@ -756,6 +759,7 @@ def _compute_accelerations(
             keep_dt = True
         df.loc[:, "dt"] = dt
     else:
+        assert df[time].is_monotonic_increasing, "dataframe must be sorted along time"
         t = df[time]
         dt = t.diff() / pd.Timedelta("1s")
         df.loc[:, "dt"] = dt
@@ -776,7 +780,7 @@ def _compute_accelerations(
 
     # compute acc from positions in lonlat
     elif from_[0] == "lonlat":
-        df_v = _compute_velocities(
+        df_v = compute_velocities(
             df,
             from_[1],
             from_[2],
@@ -824,7 +828,7 @@ def _compute_accelerations(
         return df
 
 
-def _compute_velocities(
+def compute_velocities(
     df,
     lon_key,
     lat_key,
@@ -847,7 +851,8 @@ def _compute_velocities(
     lat_key: str
            latitude column name in dataframe
     time: str
-        Column name. Default is "index", i.e. considers the index
+        Column name corresponding to time.
+        Can be "index", in which case the index is used
     names :  tuple
         Contains columns names for eastern, northen and norm velocities
         ("velocity_east", "velocity_north", "velocity" by default
@@ -877,7 +882,10 @@ def _compute_velocities(
     if not inplace:
         df = df[~df.index.duplicated(keep="first")]
     else:
-        df.drop_duplicates(keep="first", inplace=True)
+        if df.index.duplicated(keep="first").any():
+            df.reset_index(inplace=True)
+            df.drop_duplicates(subset="time", keep="first", inplace=True)
+            df.set_index("time", inplace=True)
 
     if not centered:
         warnings.warn("Velocity computation is not centered", UserWarning)
@@ -915,6 +923,7 @@ def _compute_velocities(
         w = dt / (dt + dt.shift(-1))
         df.loc[:, names[0]] = dxdt + (dxdt.shift(-1) - dxdt) * w
         df.loc[:, names[1]] = dydt + (dydt.shift(-1) - dydt) * w
+
         # boundaries, impose constant acceleration
         i0, i1 = df.index[[0, -1]]
         # print( dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1]), dxdt[1], dxdt[2], dt[1] / dt[2] )
@@ -990,53 +999,26 @@ class XrGeoAccessor:
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self._geo_proj_ref
-            self._geo_proj = pyproj.Proj(
-                proj="aeqd",
-                lat_0=latc,
-                lon_0=lonc,
-                datum="WGS84",
-                units="m",
-            )
+            self._geo_proj = projection(lonc, latc)
         return self._geo_proj
 
     def project(self, overwrite=True, **kwargs):
         """add (x,y) projection to object"""
         d = self._obj
-        dkwargs = dict(vectorize=True)
-        dkwargs.update(**kwargs)
         if "x" not in d.variables or "y" not in d.variables or overwrite:
-            proj = self.projection.transform
-            if True:
-                _x, _y = proj(
-                    d[self._lon],
-                    d[self._lat],
-                )
-                dims = d[self._lon].dims
-                d["x"], d["y"] = (dims, _x), (dims, _y)
-            else:
-                d["x"], d["y"] = xr.apply_ufunc(
-                    self.projection.transform, d[self._lon], d[self._lat], **dkwargs
-                )
+            _x, _y = self.projection.lonlat2xy(d[self._lon], d[self._lat])
+            dims = d[self._lon].dims
+            d["x"], d["y"] = (dims, _x), (dims, _y)
+        else:
+            print("project silently fails")
 
     def compute_lonlat(self, x=None, y=None, **kwargs):
         """update longitude and latitude from projected coordinates"""
         d = self._obj
-        assert ("x" in d.variables) and (
-            "y" in d.variables
-        ), "x/y coordinates must be available"
-        dkwargs = dict()
-        dkwargs.update(**kwargs)
-        if x is not None and y is not None:
-            lon, lat = _xy2lonlat(x, y, proj=self.projection)
-            return (x.dims, lon), (x.dims, lat)
-        else:
-            d[self._lon], d[self._lat] = xr.apply_ufunc(
-                _xy2lonlat,
-                d["x"],
-                d["y"],
-                kwargs=dict(proj=self.projection),
-                **dkwargs,
-            )
+        if x is None and y is None:
+            x, y = d["x"], d["y"]
+        lon, lat = self.projection.xy2lonlat(x, y)
+        return (x.dims, lon), (x.dims, lat)
 
     # time series related code
 

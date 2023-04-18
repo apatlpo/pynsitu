@@ -388,8 +388,8 @@ class Campaign(object):
 
     def map_folium(
         self,
-        width="100%",
-        height="100%",
+        width="60%",
+        height="60%",
         tiles="Cartodb Positron",
         ignore=None,
         bathy=True,
@@ -573,6 +573,12 @@ class Campaign(object):
             """plot deployment as single rectangle"""
             start = mdates.date2num(d.start.time)
             end = mdates.date2num(d.end.time)
+
+            # normalize rgba if need be, better to convert to hex with matplotlib.colors.to_hex or other
+            if isinstance(color, tuple):
+                if max(color) > 1:
+                    color = tuple(c / 256 for c in color)
+
             rect = Rectangle(
                 (start, y - height / 2.0), end - start, height, color=color
             )
@@ -646,91 +652,104 @@ class Campaign(object):
 
         return ax
 
-    def _add_legend(
+    def add_legend(
         self,
         ax,
-        labels=None,
-        skip_ship=True,
-        colors=None,
+        labels=[],
+        skip=None,
+        colors={},
         **kwargs,
     ):
-        """Add legend for units on an axis,
-        Used for timelines as well as maps
-        This could be used in timeline, kept as an archive at the moment
+        """Add legend for deployment/platforms on an axis.
+        To be used for timelines (see `Campaign.timeline`) as well as maps
 
         Parameters
         ----------
         ax: pyplot.axes
         labels: list, optional
-            List of labels to consider amongst cp units
-        skip_ship: boolean, optional
+            List of labels to consider amongst cp deployments/platforms
+        skip: list, optional
+            List of deployments and platforms to skip
         colors: dict, optional
         **kwargs: passed to legend
         """
         from matplotlib.lines import Line2D
 
-        if labels is None:
-            labels = list(self._units)
-        if skip_ship:
-            labels = [l for l in labels if l != "ship"]
+        # fill labels to show
+        labels = list(labels)
+        if self.deployments:
+            labels += list(self.deployments)
+        if self.platforms:
+            labels += list(self.platforms)
+
+        # get rid of labels to skip
+        if skip is not None:
+            skip = list(skip)
+            labels = [l for l in labels if l not in skip]
+
+        # show
         custom_lines = []
         for label in labels:
-            if colors and label in colors:
+            if label in colors:
                 c = colors[label]
+            elif "color" in self[label]["meta"]:
+                c = self[label]["meta"]["color"]
             else:
-                c = self[label]["color"]
-            custom_lines.append(Line2D([0], [0], color=c, lw=4))
+                c = None
+                labels.pop(label)
+            if c is not None:
+                custom_lines.append(Line2D([0], [0], color=c, lw=4))
         ax.legend(custom_lines, labels, **kwargs)
 
-    def load(self, item, toframe=False):
+    def load(self, item, toframe=False, ignore=False):
         """load processed data files
         recall item
 
+        Parameters
+        ----------
+        item: str
+            Name of netcdf file (or platform or deployments but not working at the moment)
+            Can contain
+        toframe: boolean
+            Transform to pd.DataFrame
+        ignore: boolean
+            Ignore non-existent files
+
         Returns
         -------
-        output: dict
-            {'unit0': {'deployment0': data, ...}}
+        output: xr.Dataset, pd.DataFrame, dict
+            {'file0': ds0, 'file1': ds1, ...}
+            {'platform0': {'deployment0': data, ...}}
         """
 
         # straight netcdf file
         if ".nc" in item:
             file = os.path.join(self["path_processed"], item)
+            if not os.path.isfile(file) and ignore:
+                return None
             ds = xr.open_dataset(file)
             if toframe:
                 ds = ds.to_dataframe()
             return ds
 
-        _files = self._get_unit_files(item)
-        D = {}
-        for d, f in _files.items():
-            ds = xr.open_dataset(f)
-            if toframe:
-                ds = ds.to_dataframe()
-            D[d] = ds
-        if not D:
-            return None
-        # elif len(D)==1:
-        #    # may want just to return D instead
-        #    return D[list(D.keys())[0]]
+        if "*" in item:
+            files = sorted(
+                glob(os.path.join(self["path_processed"], item)),
+            )
+            keys = [f.split("/")[-1].replace(".nc", "") for f in files]
         else:
-            return D
+            files = sorted(
+                glob(os.path.join(self["path_processed"], item + "_*.nc")),
+            )
+            keys = [
+                f.split("/")[-1].replace(item + "_", "").replace(".nc", "")
+                for f in files
+            ]
 
-    def _get_unit_files(self, unit, extension="nc"):
-        """get all processed files associated with one unit"""
-        files = sorted(
-            glob(os.path.join(self["path_processed"], unit + "*." + extension)),
-            key=_extract_last_digit,
-        )
-        # find out whether there are multiple deployments
-        if len(files) == 1:
-            return dict(d0=files[0])
-        D = {}
-        for f in files:
-            s = f.split("/")[-1].split(".")[0].replace(unit, "").split("_")
-            assert (
-                len(s) == 2
-            ), f"there must be 0 or 1 underscore, but we have: {f}, {s}"
-            D[s[1]] = f
+        D = {k: xr.open_dataset(f) for f, k in zip(files, keys)}
+        if toframe:
+            D = {k: ds.to_dataframe() for k, ds in D.items()}
+
         return D
 
     def _get_processed_files(
@@ -852,6 +871,8 @@ def _process_platforms(platforms):
             for s, vs in v["sensors"].items():
                 smeta = dict(**pmeta)
                 smeta.update(label=s)
+                if "meta" in vs:
+                    smeta.update(**vs["meta"])
                 D = Deployments(meta=smeta)
                 if "deployments" in vs:
                     D.update(

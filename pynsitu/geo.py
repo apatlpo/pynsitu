@@ -48,7 +48,7 @@ omega_earth = 2.0 * np.pi / 86164.0905
 
 
 def coriolis(lat, signed=True):
-    """ returns Coriolis frequency in 1/s"""
+    """returns Coriolis frequency in 1/s"""
     if signed:
         return 2.0 * omega_earth * np.sin(lat * deg2rad)
     else:

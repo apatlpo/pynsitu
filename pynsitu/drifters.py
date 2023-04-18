@@ -225,7 +225,14 @@ def resample_smooth(
             dfi, "x", "y", "index", ("u", "v", "uv"), True, True, None
         )
         dfi = compute_accelerations(
-            dfi, ("xy", "x", "y"), ("ax", "ay", "axy"), True, "index", False, True, False,
+            dfi,
+            ("xy", "x", "y"),
+            ("ax", "ay", "axy"),
+            True,
+            "index",
+            False,
+            True,
+            False,
         )
 
     return dfi

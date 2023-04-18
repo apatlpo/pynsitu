@@ -340,6 +340,7 @@ class XrTimeSeriesAccessor:
 
 # -------------------------- filtering ----------------------------------
 
+
 def generate_filter(
     band,
     T=10,
@@ -381,6 +382,7 @@ def generate_filter(
     elif band == "inertial":
         assert lat is not None, "latitude needs to be provided to generate_filter"
         from .geo import coriolis
+
         omega = coriolis(lat) / 2.0 / np.pi
     elif isinstance(band, float):
         omega = band
@@ -657,6 +659,3 @@ def load_equilibrium_constituents(c=None):
         p_names = ["amplitude", "phase", "omega", "alpha", "species"]
         p = pyTMD.load_constituent(c)
         return pd.Series({_n: _p for _n, _p in zip(p_names, p)})
-
-
-

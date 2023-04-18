@@ -93,6 +93,9 @@ def resample_smooth(
     where e_x is the position error, `I` the time interpolation operator,
     `R` the acceleration autocorrelation, `D2` the second order derivative.
 
+    Closest reference (but no temporal autocorrelation of acceleration considered):
+    Yaremchuk and Coelho 2015. Filtering Drifter Trajectories Sampled at Submesoscale, Resolution. IEEE Journal of Oceanic Engineering
+
     Parameters
     ----------
     df: `pandas.DataFrame`

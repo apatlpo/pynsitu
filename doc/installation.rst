@@ -11,7 +11,11 @@ pynsitu is compatible both with Python 3. The major dependencies are xarray_ and
 Install dependencies via conda
 -----------------------------
 
-Advised way to install the required environment is via Anaconda_::
+Directly from Anaconda_::
+
+    $ conda install pynsitu --channel apatlpo
+
+Or more manually::
 
     $ git clone https://github.com/apatlpo/pynsitu.git
     $ cd pynsitu

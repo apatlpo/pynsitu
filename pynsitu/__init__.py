@@ -62,6 +62,9 @@ import numpy as np
 # misc plotting
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
+# colormaps shortcuts
+thermal = maps.cm.thermal
+haline = maps.cm.haline
 
 
 def get_cmap_colors(Nc, cmap="plasma"):

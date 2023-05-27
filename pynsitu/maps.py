@@ -91,17 +91,7 @@ def plot_map(
         figsize = (10, 5)
     if fig is None:
         fig = plt.figure(figsize=figsize)
-    if extent == "global":
-        proj = ccrs.Robinson()
-        extent = None
-    else:
-        _lon_central = (extent[0] + extent[1]) * 0.5
-        _lat_central = (extent[2] + extent[3]) * 0.5
-        # used to be ccrs.Orthographic(...)
-        proj = ccrs.LambertAzimuthalEqualArea(
-            central_longitude=_lon_central,
-            central_latitude=_lat_central,
-        )
+    proj, extent = get_projection(extent)
     if tile is not None:
         import cartopy.io.img_tiles as cimgt
 
@@ -220,6 +210,22 @@ def plot_map(
     #
     return fig, ax, cbar
 
+def get_projection(extent):
+    """ compute a geographical projection from extent which can either be
+    a string (e.g. "global") or a tuple
+    """
+    if extent == "global":
+        proj = ccrs.Robinson()
+        extent = None
+    else:
+        _lon_central = (extent[0] + extent[1]) * 0.5
+        _lat_central = (extent[2] + extent[3]) * 0.5
+        # used to be ccrs.Orthographic(...)
+        proj = ccrs.LambertAzimuthalEqualArea(
+            central_longitude=_lon_central,
+            central_latitude=_lat_central,
+        )
+    return proj, extent
 
 def _plot_land(ax, land, **kwargs):
     """plot land on an existing axis

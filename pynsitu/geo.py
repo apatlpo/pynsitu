@@ -162,7 +162,7 @@ class GeoAccessor:
         """verify there is a column latitude and a column longitude"""
         lon, lat = None, None
         lat_potential = ["lat", "latitude"]
-        lon_potential = ["lon", "longitude"]
+        lon_potential = ["lon", "long", "longitude"]
         for c in list(obj.columns):
             if c.lower() in lat_potential:
                 lat = c

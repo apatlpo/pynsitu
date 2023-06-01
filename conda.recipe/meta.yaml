@@ -1,35 +1,38 @@
-    package:    
-        name: "pynsitu"
-        version: "0.1.0"
+package:
+  name: "pynsitu"
+  version: "0.0.1"
 
-    source:
-        git_url: https://github.com/apatlpo/pynsitu
+source:
+  git_url: https://github.com/apatlpo/pynsitu
 
-    requirements:
-        host:
-            - python
-            - setuptools
-        build:
-            - python
-        run:
-            - python
-            - xarray
-            - geopandas
-            - cartopy
-            - folium
-            - cmocean
-            - gsw
-            - pytide
-            - pip
-            - geojsoncontour
+build:
+  number: 0
 
-    about:
-        home: https://github.com/apatlpo/pynsitu
-        license: MIT
-        license_familY: MIT
-        license_file: LICENSE
-        summary: "Physical Oceanography In Situ Data analysis"
+requirements:
+  host:
+    - python
+    - setuptools
+  build:
+    - python {{ python }} 
+  run:
+    - python
+    - xarray
+    - geopandas
+    - cartopy
+    - folium
+    - cmocean
+    - gsw
+    - pytide
+    - pip
+    - geojsoncontour
 
-    extra:
-        recipe-maintainers:
-            - apatlpo
+about:
+  home: https://github.com/apatlpo/pynsitu
+  license: MIT
+  license_familY: MIT
+  license_file: LICENSE
+  summary: "Various tools for the processing of oceanographic data based on pandas/xarray"
+
+extra:
+  recipe-maintainers:
+    - apatlpo

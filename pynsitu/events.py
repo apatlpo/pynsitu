@@ -601,7 +601,7 @@ class Campaign(object):
             if align_deployments:
                 yticks.append(y)
                 yticks_labels.append("deployments")
-                #y += -1
+                # y += -1
             for _, d in self.deployments.items():
                 if d.label in exclude:
                     continue

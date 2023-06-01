@@ -210,8 +210,9 @@ def plot_map(
     #
     return fig, ax, cbar
 
+
 def get_projection(extent):
-    """ compute a geographical projection from extent which can either be
+    """compute a geographical projection from extent which can either be
     a string (e.g. "global") or a tuple
     """
     if extent == "global":
@@ -226,6 +227,7 @@ def get_projection(extent):
             central_latitude=_lat_central,
         )
     return proj, extent
+
 
 def _plot_land(ax, land, **kwargs):
     """plot land on an existing axis

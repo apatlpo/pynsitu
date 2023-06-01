@@ -190,7 +190,11 @@ class GeoAccessor:
         if self._geo_proj_ref is None:
             # return the geographic center point of this DataFrame
             lat, lon = self._obj[self._lat], self._obj[self._lon]
-            self._geo_proj_ref = (float(lon.iloc[0]), float(lat.iloc[0]))
+            lat_ref, lon_ref = lon.mean(), lat.mean()
+            assert not np.isnan(lat_ref) and not np.isnan(
+                lon_ref
+            ), "lat, lon data do not contain any valid data"
+            self._geo_proj_ref = (lon_ref, lat_ref)
         return self._geo_proj_ref
 
     def set_projection_reference(self, ref, reset=True):

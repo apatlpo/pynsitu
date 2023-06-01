@@ -191,7 +191,9 @@ class GeoAccessor:
             # return the geographic center point of this DataFrame
             lat, lon = self._obj[self._lat], self._obj[self._lon]
             lat_ref, lon_ref = lon.mean(), lat.mean()
-            assert not np.isnan(lat_ref) and not np.isnan(lon_ref), "lat, lon data do not contain any valid data"
+            assert not np.isnan(lat_ref) and not np.isnan(
+                lon_ref
+            ), "lat, lon data do not contain any valid data"
             self._geo_proj_ref = (lon_ref, lat_ref)
         return self._geo_proj_ref
 

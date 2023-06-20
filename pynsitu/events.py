@@ -539,10 +539,12 @@ class Campaign(object):
         platforms=True,
         sensors=True,
         deployments=True,
+        align_deployments=False,
         height=0.6,
         labels=False,
         ax=None,
         grid=True,
+        exclude=[],
     ):
         """Plot the campaign deployment timeline
 
@@ -554,6 +556,8 @@ class Campaign(object):
             Show sensors
         deployments: boolean, optional
             Show deployments
+        align_deployments: boolean, optional
+            Align deployments vertically
         height: float, optional
             bar heights, 0.6 by default
         ax: pyplot.axes, optional
@@ -586,7 +590,7 @@ class Campaign(object):
             starts.append(start)
             ends.append(end)
             if label is not None:
-                if color in ["black", "k"]:
+                if color in ["black", "k", "grey"]:
                     color_txt = "w"
                 else:
                     color_txt = "k"
@@ -594,19 +598,28 @@ class Campaign(object):
 
         # common deployments
         if deployments and self.deployments:
-            for _, d in self.deployments.items():
-                _kwargs = dict(label=d.label, **d.meta)
-                # if not labels:
-                #    _kwargs.pop("label")
-                plot_d(d, y, **_kwargs)
+            if align_deployments:
                 yticks.append(y)
-            yticks_labels.append("deployments")
-            y += -1
+                yticks_labels.append("deployments")
+                # y += -1
+            for _, d in self.deployments.items():
+                if d.label in exclude:
+                    continue
+                _kwargs = dict(**d.meta)
+                if align_deployments:
+                    _kwargs["label"] = d.label
+                plot_d(d, y, **_kwargs)
+                if not align_deployments:
+                    yticks.append(y)
+                    yticks_labels.append(d.label)
+                    y += -1
+            if align_deployments:
+                y += -1
 
         # platform
         if platforms and self.platforms:
             for p, pf in self.platforms.items():
-                if platforms and pf["deployments"]:
+                if platforms and pf["deployments"] and p not in exclude:
                     for _, d in pf["deployments"].items():
                         _kwargs = dict(**pf["meta"])
                         if not labels:
@@ -618,6 +631,8 @@ class Campaign(object):
                 #
                 if sensors and pf["sensors"]:
                     for s, sv in pf["sensors"].items():
+                        if s in exclude:
+                            continue
                         for _, d in sv.items():
                             _kwargs = {**sv.meta}
                             _kwargs.pop("label")

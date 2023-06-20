@@ -5,10 +5,6 @@ import numpy.testing as npt
 import xarray as xr
 import pandas as pd
 
-# import geopandas as gpd
-# from shapely.geometry import Polygon, Point
-# from shapely import wkt
-# from shapely.ops import transform
 try:
     import pyproj
 
@@ -16,13 +12,7 @@ try:
 except:
     print("Warning: could not import pyproj")
 
-# import pyinterp.geohash as geohash
-# import geojson
-
 import matplotlib.pyplot as plt
-
-# from matplotlib.dates import date2num, datetime
-# from matplotlib.colors import cnames
 
 try:
     from bokeh.io import output_notebook, show
@@ -30,6 +20,7 @@ try:
     from bokeh.models import HoverTool, CustomJSHover
     from bokeh.models import CrosshairTool
     from bokeh.plotting import figure
+    import hvplot.pandas
 except:
     print("Warning: could not import bokeh")
     CustomJSHover = lambda *args, **kargs: None
@@ -162,7 +153,7 @@ class GeoAccessor:
         """verify there is a column latitude and a column longitude"""
         lon, lat = None, None
         lat_potential = ["lat", "latitude"]
-        lon_potential = ["lon", "longitude"]
+        lon_potential = ["lon", "long", "longitude"]
         for c in list(obj.columns):
             if c.lower() in lat_potential:
                 lat = c
@@ -190,7 +181,7 @@ class GeoAccessor:
         if self._geo_proj_ref is None:
             # return the geographic center point of this DataFrame
             lat, lon = self._obj[self._lat], self._obj[self._lon]
-            lat_ref, lon_ref = lon.mean(), lat.mean()
+            lon_ref, lat_ref = lon.median(), lat.median()
             assert not np.isnan(lat_ref) and not np.isnan(
                 lon_ref
             ), "lat, lon data do not contain any valid data"
@@ -473,8 +464,8 @@ class GeoAccessor:
         output_notebook()
         figkwargs = dict(
             tools="pan,wheel_zoom,box_zoom,reset,help",
-            plot_width=350,
-            plot_height=300,
+            width=350,
+            height=300,
             x_axis_type="datetime",
         )
         crosshair = CrosshairTool(dimensions="both")

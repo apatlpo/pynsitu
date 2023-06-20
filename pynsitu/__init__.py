@@ -63,6 +63,10 @@ import numpy as np
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
 
+# colormaps shortcuts
+thermal = maps.cm.thermal
+haline = maps.cm.haline
+
 
 def get_cmap_colors(Nc, cmap="plasma"):
     """load colors from a colormap to plot lines

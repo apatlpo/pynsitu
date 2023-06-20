@@ -19,6 +19,8 @@ requirements:
     - xarray
     - geopandas
     - cartopy
+    - hvplot
+    - geoviews
     - folium
     - cmocean
     - gsw

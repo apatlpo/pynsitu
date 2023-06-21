@@ -143,7 +143,7 @@ class Deployment(object):
         if key in self.meta:
             return self.meta[key]
         return getattr(self, key)
-    
+
     def __contains__(self, item):
         if item in self.meta:
             return True

@@ -260,7 +260,7 @@ class PdSeawaterAccessor:
         self,
         deployments=None,
         rule=None,
-        plot_width=400,
+        width=400,
         cross=True,
     ):
         """Bokeh plot, useful to clean data
@@ -271,7 +271,7 @@ class PdSeawaterAccessor:
             Deployments
         rule: str, optional
             resampling rule
-        plot_width: int, optional
+        width: int, optional
             Plot width in pixels
         cross: boolean, optional
             ...
@@ -318,8 +318,8 @@ class PdSeawaterAccessor:
             # create a new plot and add a renderer
             s = figure(
                 tools=TOOLS,
-                plot_width=plot_width,
-                plot_height=300,
+                width=width,
+                height=300,
                 title=label,
                 x_axis_type="datetime",
                 **kwargs,

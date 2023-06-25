@@ -46,7 +46,7 @@ class PdSeawaterAccessor:
         Accepted units ares:
             - temperature: degC
             - practical salinity: PSU
-            - conductivity: mS/m
+            - conductivity: mS/cm
             - pressure: dbar
             - depth: m
         Longitude and Latitude are treated differently and may be columns or
@@ -60,6 +60,10 @@ class PdSeawaterAccessor:
             )
         self._obj = pandas_obj
         self._update_SA_PT()
+
+    def init(self):
+        """simply instantiate accessor"""
+        return
 
     # @staticmethod
     def _validate(self, obj):

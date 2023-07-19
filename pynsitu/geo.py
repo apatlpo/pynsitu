@@ -308,9 +308,9 @@ class GeoAccessor:
             self._lon,
             self._lat,
             time,
-            names,
-            centered,
-            fill_startend,
+            names=names,
+            centered=centered,
+            fill_startend=fill_startend,
             distance=distance,
             keep_dt=keep_dt,
             inplace=inplace,
@@ -804,7 +804,8 @@ def compute_accelerations(
 
         df.loc[:, names[0]] = (dxdt.shift(-1) - dxdt) / dt_acc
         df.loc[:, names[1]] = (dydt.shift(-1) - dydt) / dt_acc
-
+    else :
+        assert False, "from_ should be 'lonlat', 'xy', 'velocities'"
     # update acceleration norm
     df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
 

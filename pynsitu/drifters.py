@@ -10,9 +10,11 @@ from scipy.special import erf
 
 from pynsitu.geo import GeoAccessor, compute_velocities, compute_accelerations
 
+from numba import njit, guvectorize, int32, float64, prange
 
-# ------------------------ drifter data cleaning --------------------------------
-
+#################################################################################
+# ------------------------ DRIFTER DATA CLEANING --------------------------------
+#################################################################################
 
 def despike_isolated(df, acceleration_threshold, verbose=True):
     """Drops isolated anomalous positions (spikes) in a position time series.
@@ -72,16 +74,18 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
     df = df.drop(validated_single_spikes)
     return df
 
-
-def resample_smooth(
+###########################################
+#-----------VARIATIONNAL METHOD------------#
+def variational_smooth(
     df,
     t_target,
     position_error,
     acceleration_amplitude,
     acceleration_T,
-    velocity_acceleration=True,
     time_chunk=2,
+    import_columns=['id'],
     geo=True,
+    acc=True,
 ):
     """Smooth and resample a drifter position time series
     The smoothing balances positions information according to the specified
@@ -98,40 +102,63 @@ def resample_smooth(
 
     Parameters
     ----------
-    df: `pandas.DataFrame`
-        Input drifter time series, must contain projected positions (`x` and `y`)
-    t_target: `pandas.core.indexes.datetimes.DatetimeIndex`
-        Output time series, as typically given by pd.date_range
-        Note that the problem seems ill-posed in the downsampling case ... need
-        to be fixed
-    position_error: float
-        Position error in meters
-    acceleration_amplitude: float
-        Acceleration typical amplitude
-    acceleration_T: float
-        Acceleration decorrelation timescale in seconds
-    velocity_acceleration: boolean, optional
-        Updates velocity and acceleration
-    time_chunk: int/float, optional
-        Maximum time chunk (in days) to process at once.
-        Data is processed by chunks and patched together.
-    geo: boolean, optional
+                df: `pandas.DataFrame`
+                    Input drifter time series, must contain projected positions (`x` and `y`)
+                t_target: `pandas.core.indexes.datetimes.DatetimeIndex`
+                    Output time series, as typically given by pd.date_range
+                    Note that the problem seems ill-posed in the downsampling case ... need
+                    to be fixed
+                position_error: float
+                    Position error in meters
+                acceleration_amplitude: float
+                    Acceleration typical amplitude
+                acceleration_T: float
+                    Acceleration decorrelation timescale in seconds
+                time_chunk: int/float, optional
+                    Maximum time chunk (in days) to process at once.
+                    Data is processed by chunks and patched together.
+                import_columns : list of str
+                    list of df constant columns we want to import (ex: id, platform)    
+                geo: boolean,
+                    optional if geo obj with projection
+                acc: boolean,
+                    optional compute acceleration
+    Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, +import_columns with index time
 
     """
-
-    # enforce t_target type
-    t_target = pd.DatetimeIndex(t_target)
+    # store projection to align with dataframes produced
+    if geo :
+        proj_ref = df.geo.projection_reference
+    
+    #index = time
+    if df.index.name!='time':
+        if df.index.name == None:
+            df = df.set_index('time')
+        else : 
+            df =df.reset_index().set_index('time')
+            
+    # assert x, y in dataframe
+    if 'x' not in df or 'y' not in df :
+        assert False, "positions must be labelled as 'x' and 'y'"
+    if 'lon' not in df or 'lat' not in df :
+        assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
+        
+    #select only x, y
+    df = df[['x', 'y', 'lon', 'lat']+import_columns]
+    
+    #t_target
+    if isinstance(t_target, str) :
+        t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
+    else : 
+        # enforce t_target type
+        t_target = pd.DatetimeIndex(t_target)
 
     # Time series length in days
     T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
 
-    # store projection to align with dataframes produced
-    if geo:
-        proj = df.geo.projection_reference
-
     if not time_chunk or T < time_chunk * 1.1:
 
-        dfi = _resample_smooth_one(
+        df_out = _variational_smooth_one(
             df,
             t_target,
             position_error,
@@ -153,8 +180,8 @@ def resample_smooth(
                 (df.index > time[0] - delta) & (df.index < time[-1] + delta)
             ]
             if geo:
-                df_chunk.geo.set_projection_reference(proj)
-            df_chunk_smooth = _resample_smooth_one(
+                df_chunk.geo.set_projection_reference(proj_ref)
+            df_chunk_smooth = _variational_smooth_one(
                 df_chunk,
                 time,
                 position_error,
@@ -165,9 +192,9 @@ def resample_smooth(
             R.append(df_chunk_smooth)
 
         # brute concatenation: introduce strong discontinuities in velocity/acceleration
-        # dfi = pd.concat(R)
+        # df_out = pd.concat(R)
         # removes duplicated times
-        # dfi = dfi.loc[~dfi.index.duplicated(keep="first")]
+        # df_out = df_out.loc[~df_out.index.duplicated(keep="first")]
 
         ## patch timeseries together, not that simple ...
 
@@ -207,41 +234,84 @@ def resample_smooth(
 
             i += 1
 
-        dfi = df_right
+        df_out = df_right
         # fix non float dtypes
-        # for c in dfi.columns:
-        #    dfi[c] = dfi[c].astype(df[c].dtype)
+        # for c in df_out.columns:
+        #    df_out[c] = df_out[c].astype(df[c].dtype)
+        
+        # update lon/lat
         if geo:
-            # reproject
-            dfi.geo.set_projection_reference(proj)
-            # lon/lat are updated in _resample_smooth_one but x/y have been modified
-            # with the patching and hence need to be recomputed
-            dfi.geo.compute_lonlat()  # inplace
-
-    # recompute velocity, should be an option?
-    if velocity_acceleration and geo:
-        dfi = dfi.geo.compute_velocities()
-        dfi = dfi.geo.compute_accelerations()
-        # should still recompute for non-geo datasets
-    else:
-        dfi = compute_velocities(
-            dfi, "x", "y", "index", ("u", "v", "uv"), True, True, None
+            # first reset reference from df
+            df_out.geo.set_projection_reference(proj_ref)  # inplace
+            df_out.geo.compute_lonlat()  # inplace
+    
+    # compute velocity :
+    if geo : 
+        df_out.geo.compute_velocities(names=("u", "v", "uv"),
+                                      inplace=True,
+                                      fill_startend =False,)
+    else : 
+        compute_velocities(
+            df_out, "x", "y", "index",
+            names = ("u", "v", "uv"),
+            distance = None,
+            inplace=True,
+            centered=True,
+            fill_startend =False,
         )
-        dfi = compute_accelerations(
-            dfi,
-            ("xy", "x", "y"),
-            ("ax", "ay", "axy"),
-            True,
-            "index",
-            False,
-            True,
-            False,
-        )
+        
+    # recompute acceleration
+    if acc:
+        if geo :
+            df_out.geo.compute_accelerations(
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            )
+            df_out.geo.compute_accelerations(
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            ) 
+            # should still recompute for non-geo datasets
+        else:
+            compute_accelerations(
+                df_out,
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )
+            compute_accelerations(
+                df_out,
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )   
+    
+    #import columns/info ex: id or time
+    if import_columns :
+        for column in import_columns :
+             df_out[column] = df[column][0] 
+            
+    return df_out
 
-    return dfi
 
 
-def _resample_smooth_one(
+def _variational_smooth_one(
     df,
     t_target,
     position_error,
@@ -252,20 +322,20 @@ def _resample_smooth_one(
     """core processing for resample_smooth, process one time window"""
 
     # init final structure
-    dfi = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
+    df_out = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
     # providing "nearest" above is essential to preserve type (on int64 data typically)
     # override with interpolation for float data
     col_float = [
         c for c in df.columns if np.issubdtype(df[c].dtype, float)
     ]  # could skip x/y: and c not in ["x", "y"]
     for c in col_float:
-        dfi[c] = (
+        df_out[c] = (
             df[c]
             .reindex(df.index.union(t_target))
             .interpolate("time")
             .reindex(t_target)
         )
-    dfi.index.name = "time"
+    df_out.index.name = "time"
 
     # exponential acceleration autocorrelation
     R = lambda dt: acceleration_amplitude**2 * np.exp(-np.abs(dt / acceleration_T))
@@ -273,73 +343,17 @@ def _resample_smooth_one(
     L, I = _get_smoothing_operators(t_target, df.index, position_error, R)
 
     # x
-    dfi["x"] = solve(L, I.T.dot(df["x"].values))
-
+    df_out["x"] = solve(L, I.T.dot(df["x"].values))
     # y
-    dfi["y"] = solve(L, I.T.dot(df["y"].values))
+    df_out["y"] = solve(L, I.T.dot(df["y"].values))
 
     # update lon/lat
     if geo:
         # first reset reference from df
-        dfi.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
-        dfi.geo.compute_lonlat()  # inplace
+        df_out.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
+        df_out.geo.compute_lonlat()  # inplace
 
-    return dfi
-
-
-def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
-    """Core operators in order to minimize:
-        (Ix - x_obs)^2 / e_x^2 + (D2 x)^T R^{-1} (D2 x)
-    where R is the acceleration autocorrelation, assumed to follow
-
-    """
-
-    # assumes t_target is uniform
-    dt = t_target[1] - t_target[0]
-
-    # build linear interpolator
-    Nt = t_target.size
-    I = np.zeros((t.size, Nt))
-    i_t = np.searchsorted(t_target, t)
-    i = np.where((i_t > 0) & (i_t < Nt))[0]
-    j = i_t[i]
-    w = (t[i] - t_target[j - 1]) / dt
-    I[i, j - 1] = w
-    I[i, j] = 1 - w
-
-    # second order derivative
-    one_second = pd.Timedelta("1S")
-    dt2 = (dt / one_second) ** 2
-    D2 = diags([1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)).toarray()
-    # fix boundaries
-    # D2[0, :] = 0
-    # D2[-1, :] = 0
-    # need to impose boundary conditions or else pulls acceleration towards 0 as it is
-    # D2[0, [0, 1]] = [-1/dt2, 1/dt2] # not good: pull velocity towards 0 at edges
-    # D2[-1, [-2, -1]] = [-1/dt2, 1/dt2]  # not good: pull velocity towards 0 at edges
-    # constant acceleration at boundaries (does not work ... weird):
-    # D2[0, [0, 1, 2, 3]] = [-1 / dt2, 3 / dt2, -3 / dt2, 1 / dt2]
-    # D2[-1, [-4, -3, -2, -1]] = [1 / dt2, -3 / dt2, 3 / dt2, -1 / dt2]
-
-    # acceleration autocorrelation
-    _t = t_target.values
-    R = acceleration_R((_t[:, None] - _t[None, :]) / one_second)
-    # apply constraint on laplacian only on inner points (should try to impose above boundary treatment instead)
-    D2 = D2[1:-1, :]
-    R = R[1:-1, 1:-1]
-    # boundaries
-    # R[0,:] = 0
-    # R[0,0] = R[1,1]*1000
-    # R[-1,:] = 0
-    # R[-1,-1] = R[-2,-2]*1000
-    #
-    iR = inv(R)
-
-    # assemble final operator
-    L = I.T.dot(I) + D2.T.dot(iR.dot(D2)) * position_error**2
-
-    return L, I
-
+    return df_out
 
 def _divide_into_time_chunks(time, T, overlap=0.1):
     """Divide a dataframe into chunks of duration T (in days)
@@ -371,7 +385,553 @@ def _divide_into_time_chunks(time, T, overlap=0.1):
         t = t + Td * (1 - overlap)
     return D
 
+def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
+    """Core operators in order to minimize:
+        (Ix - x_obs)^2 / e_x^2 + (D2 x)^T R^{-1} (D2 x)
+    where R is the acceleration autocorrelation function, assumed to follow
 
+    """
+
+    # assumes t_target is uniform
+    dt = t_target[1] - t_target[0]
+
+    # build linear interpolator
+    Nt = t_target.size
+    I = np.zeros((t.size, Nt))
+    i_t = np.searchsorted(t_target, t)#Find the indices into a sorted array `t_target` such that, if the corresponding elements in `t` were inserted before the indices, the order of `t_target` would be preserved
+
+    i = np.where((i_t > 0) & (i_t < Nt))[0]#remove times before and after the target times
+    j = i_t[i] 
+    # t[0] is between t_target[i_t[0]-1=j[0]-1] and  t_target[i_t[0]=j[0]]
+    w = (t[i] - t_target[j - 1]) / dt # weight =distance to neightboors
+    I[i, j - 1] = w 
+    I[i, j] = 1 - w
+
+    # second order derivative
+    one_second = pd.Timedelta("1S")
+    dt2 = (dt / one_second) ** 2
+    D2 = diags([1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)).toarray() # Nt*Nt with -2/dt2 at the diagonale, 1/dt2 just below and above
+    # fix boundaries
+    # D2[0, :] = 0
+    # D2[-1, :] = 0
+    # need to impose boundary conditions or else pulls acceleration towards 0 as it is
+    # D2[0, [0, 1]] = [-1/dt2, 1/dt2] # not good: pull velocity towards 0 at edges
+    # D2[-1, [-2, -1]] = [-1/dt2, 1/dt2]  # not good: pull velocity towards 0 at edges
+    # constant acceleration at boundaries (does not work ... weird):
+    # D2[0, [0, 1, 2, 3]] = [-1 / dt2, 3 / dt2, -3 / dt2, 1 / dt2]
+    # D2[-1, [-4, -3, -2, -1]] = [1 / dt2, -3 / dt2, 3 / dt2, -1 / dt2]
+
+    # acceleration autocorrelation
+    _t = t_target.values
+    R = acceleration_R((_t[:, None] - _t[None, :]) / one_second)
+    # apply constraint on laplacian only on inner points (should try to impose above boundary treatment instead)
+    D2 = D2[1:-1, :]
+    R = R[1:-1, 1:-1]
+    # boundaries
+    # R[0,:] = 0
+    # R[0,0] = R[1,1]*1000
+    # R[-1,:] = 0
+    # R[-1,-1] = R[-2,-2]*1000
+    #
+    iR = inv(R)
+
+    # assemble final operator
+    L = I.T.dot(I) + D2.T.dot(iR.dot(D2)) * position_error**2
+
+    return L, I
+
+
+###########################################
+#-----------SPYDELL METHOD------------#
+
+import warnings
+def spydell_smooth(df,
+                       t_target,
+                       acc_cut = 1e-3,
+                       nb_pt_mean=5,
+                       import_columns=['id'],
+                       geo=True,
+                       acc=True, 
+                      ):
+    """ 
+    Smooth and interpolated a trajectory with the method described in Spydell et al. 2021.
+    Parameters:
+    -----------
+            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
+                Output time series, as typically given by pd.date_range or the delta time of the output time series as str
+                In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
+            nb_pt_mean : odd int,
+                number of points of wich is applied the box mean
+            acc_cut : float, 
+                acceleration spike cut value
+            import_columns : list of str,
+                list of df constant columns we want to import (ex: id, platform)
+            geo: boolean,
+                optional if geo obj with projection
+            acc: boolean,
+                optional compute acceleration
+    Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
+    """
+    
+    #index = time
+    if df.index.name!='time':
+        if df.index.name == None:
+            df = df.set_index('time')
+        else : 
+            df =df.reset_index().set_index('time')  
+    
+    # assert x, y in dataframe
+    if 'x' not in df or 'y' not in df :
+        assert False, "positions must be labelled as 'x' and 'y'"
+    if 'velocity_east' not in df or 'velocity_north' not in df :
+        assert False, "velocities must be labelled as 'velocity_east' and 'velocity_north'"
+        
+    # store projection to align with dataframes produced
+    if geo :
+        proj_ref = df.geo.projection_reference
+    
+    #t_target
+    if isinstance(t_target, str) :
+        t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
+    
+    #xarray for easy interpolation
+    ds = df.to_xarray()[['velocity_east', 'velocity_north']]
+    
+    # 3) linearly interpolate velocities
+    ds = ds.interp(time=t_target, method='linear')
+    
+    reg_dt =t_target[1] - t_target[0] 
+    
+    # 4) integrate velocities and find constant
+    ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
+    x_cum = ds.velocity_east.cumsum('time')*reg_dt/pd.Timedelta('1s')
+    y_cum = ds.velocity_north.cumsum('time')*reg_dt/pd.Timedelta('1s')
+    
+    
+    def msx_difference(x_0) :
+        return abs(ms_x-((x_0+x_cum)**2).mean())
+    def msy_difference(y_0) :
+        return abs(ms_y-((y_0+y_cum)**2).mean())
+    from scipy.optimize import minimize
+    x_0 = minimize(msx_difference, df.x[0]).x
+    y_0 = minimize(msy_difference, df.y[0]).x
+    
+    ds['x'] = x_0+x_cum
+    ds['y'] = y_0+y_cum
+
+    # 5) remove spike and interpolate
+    ds['ax'] = ds.velocity_east.differentiate('time', datetime_unit='s')
+    ds['ay'] = ds.velocity_north.differentiate('time', datetime_unit='s')
+    x = ds.where(ds.ax<acc_cut).x
+    y = ds.where(ds.ay<acc_cut).y
+    print(f"nb of spike removed { np.isnan(x).sum('time').values} over {ds.dims['time']}")
+    ds['x'] = x.interpolate_na('time')
+    ds['y'] = y.interpolate_na('time')
+    
+    
+    # 6) Box mean on nb_pt_mean
+    if nb_pt_mean%2==0:
+        warnings.warn( 'nb_pt_mean should be odd, set to np_pt_window+1')
+        nb_pt_mean +=1
+    if nb_pt_mean ==0:
+        assert False, 'np_pt_window=0'
+        
+    n = nb_pt_mean//2
+    ds0 = 0
+    ds1= ds
+    for i in np.arange(-n,n+1):
+
+        ds0 += ds1.shift({'time':i})
+        ds1 = ds
+    ds0 = ds0/nb_pt_mean
+    
+    # test box mean
+    assert ds0.isel(time=n) == ds.isel(time=slice(0, nb_pt_mean)).mean(), 'pb with mean over n points'
+    
+    ds0 = ds0.drop(['ax', 'ay']).rename({'velocity_east':'u', 'velocity_north':'v'})
+    
+    # Build full dataframe
+    df_out = ds0.to_dataframe()
+    
+    
+    #import columns/info ex: id or time
+    if import_columns :
+        for column in import_columns :
+             df_out[column] = df[column][0]  
+          
+    # update lon/lat
+    if geo:
+        df_out['lon'] = df.lon.mean()
+        df_out['lat'] = df.lat.mean()
+        # first reset reference from df
+        df_out.geo.set_projection_reference(proj_ref)  # inplace
+        df_out.geo.compute_lonlat()  # inplace
+        
+    # recompute acceleration
+    if acc:
+        if geo :
+            df_out.geo.compute_accelerations(
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            )
+            df_out.geo.compute_accelerations(
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            ) 
+            # should still recompute for non-geo datasets
+        else:
+            compute_accelerations(
+                df_out,
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )
+            compute_accelerations(
+                df_out,
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )  
+              
+    return df_out
+
+###########################################
+#-----------LOWESS METHOD------------#
+
+@njit
+def advance_search(nt, time, t, i, delta_plus, delta_minus):
+    """ find next closest neighbourgh by searching in positive and negative 
+    directions with respect to index i and update delta_minus, delta_plus
+    """
+    # delta=0 means search as stopped in that direction
+    #  compute distances with i+delta_plus and i+delta_minus points
+    if delta_plus>0 and i+delta_plus<nt:
+        d_plus = abs(time[i+delta_plus]-t)
+    else:
+        d_plus = -1.
+    if delta_minus<0 and i+delta_minus>=0:
+        d_minus = abs(time[i+delta_minus]-t)
+    else:
+        d_minus = -1.
+    # update delta_plus or delta_minus
+    if d_minus!=-1 and (d_plus==-1 or d_minus<=d_plus):#correction cas d_plus=d_minus
+        i_next = i+delta_minus #next nearest point
+        if i+delta_minus>0:
+            delta_minus+=-1
+        else:
+            # stop search in that direction 
+            delta_minus=0
+    elif d_plus!=-1 and (d_minus==-1 or d_minus>d_plus):
+        i_next = i+delta_plus
+        if i+delta_plus<nt-1:
+            delta_plus+=1
+        else:
+            # stop search in that direction
+            delta_plus=0
+    else:  # nope (numba '0.56.3')
+    #    # should never reach this point
+    #    #assert False, (i, delta_minus, delta_plus, d_minus, d_plus)
+    #    # AssertionError: (998, -1, 0, 0.9963861521472381, -1.0)
+        print(('WARNING : pb advance search', i, delta_minus, delta_plus, d_minus, d_plus)) #ok numba 0.56.3
+    return i_next, delta_minus, delta_plus
+    
+@njit
+def find_nearest_neighboors(time, t, i):
+    """ Find 3 remaining neighbouring points
+    i is a starting value (closest point)
+    """
+    nt = len(time)
+    nb = 4
+    ib = [0 for _ in range(nb)]
+    ib[0] = i
+    #initiate direction for advance search (with problem at boundaries solved)
+    if i==nt: #end-boundary case
+        delta_plus=0
+    else:
+        delta_plus=1
+    if i==0:
+        delta_minus=0 # starting boundary case
+    else:
+        delta_minus=-1 # if not at boundaries delta_minus=-1 and delta_plus=1
+    counter = 1
+    while counter<nb:
+        ib[counter], delta_minus, delta_plus = advance_search(nt, time, t, i, delta_plus, delta_minus)    
+        counter+=1
+    return np.sort(np.array(ib))
+
+#@guvectorize([(float64[:], float64[:])], '(n)->(n)')
+#@guvectorize(["void(float64[:], float64[:])"], '(n)->(n)')
+# guvectorize cannot be called from a jit method at the moment, see: https://github.com/numba/numba/issues/5720
+#def I_func(v, res):
+@njit
+def I_func(v):
+    I = np.zeros_like(v)
+    for i in range(v.shape[0]):
+        if v[i]>-1 or v[i]<1:
+            I[i] = v[i]
+        else:
+            I[i] = 0.
+    return I
+
+@njit
+def solve_position_velocity(t_nb, x_nb, time_target):
+    # solve for x and u :  x + u*(t_nb-date_target) = x_nb
+    t = t_nb - time_target
+    dt = t_nb[-1]-t_nb[0]
+    weights = 70/81*(1-np.abs(t/dt)**3)**3 * I_func( t/dt )
+    w = np.sum(weights)
+    wt = np.sum(weights * t)
+    wt2 = np.sum(weights * t**2)
+    A = np.array([[w,wt],[wt,wt2]])#coef gradients
+    b = np.array([np.sum(weights*x_nb), np.sum(weights*x_nb*t)])
+    out = np.linalg.solve(A, b)
+    return out[0], out[1]
+
+@njit
+def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
+    # solve for x and u :  x + u*(t_nb-date_target) = x_nb
+    t = t_nb - time_target
+    dt = t_nb[-1]-t_nb[0]
+    weights = 70/81*(1-np.abs(t/dt)**3)**3 * I_func( t/dt )
+    w = np.sum(weights)
+    wt = np.sum(weights * t)
+    wt2 = np.sum(weights * t**2)
+    wt3 = np.sum(weights * t**3)
+    wt4 = np.sum(weights * t**4)
+    A = np.array([[w,wt, wt2],[wt,wt2, wt3], [wt2,wt3, wt4]])#coef gradients
+    b = np.array([np.sum(weights*x_nb), np.sum(weights*x_nb*t), np.sum(weights*x_nb*t**2)])
+    out = np.linalg.solve(A, b)
+    return out[0], out[1], out[2]
+
+#@njit("UniTuple(float64[:], 2)(float64[:], float64[:], float64[:])")
+@njit
+def lowess(time, x, time_target, degree):
+    """ perform a lowess interpolation
+    
+    Parameters
+    ----------
+    time: np.array
+        time array, assumed to be sorted in time, should be floats
+    x: np.array
+        positions
+    time_target: np.array
+        target timeline
+    degree : 2 or 3, of the polynomial
+    """
+    nt = len(time_target)
+    
+    assert time_target[0]>=time[0], "time_target[0] is not within time span"
+    assert time_target[-1]<=time[-1], "time_target[-1] is not within time span"
+        
+    # find closest values
+    #d = np.abs(time[:,None] - time_target[None, :]) # nope (numba '0.56.3')
+    d = np.abs(time.reshape(len(time), 1) -time_target.reshape(1, nt))
+
+    i_closest = np.argmin(d, axis=0)#the indice of the nearest time in the raw time series (time) for each time of the regular time series (time_target)
+
+    x_out = np.zeros(nt)
+    u_out = np.zeros(nt)
+    a_out = np.zeros(nt)
+    
+    for i in prange(nt):
+        i_nb = find_nearest_neighboors(time, time_target[i], i_closest[i])
+        t_nb = time[i_nb]
+        x_nb = x[i_nb]
+        if degree == 2:
+            try : 
+                x_out[i], u_out[i] = solve_position_velocity(t_nb, x_nb, time_target[i])
+            except : print('WARNING :  pb with solve_position_velocity')  
+        elif degree ==3 :
+            try :
+                x_out[i], u_out[i], a_out[i] = solve_position_velocity_acceleration(t_nb, x_nb, time_target[i])
+            except : print('WARNING :  pb with solve_position_velocity')   
+
+    return x_out, u_out, a_out
+    
+def lowess_smooth (df, t_target, degree, import_columns = None, geo=False, acc=False):
+    """ perform a lowess interpolation as in Elipot et al. 2016
+    
+    Parameters
+    ----------
+    df: dataframe, must contain x, y
+    t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
+                Output time series, as typically given by pd.date_range or the delta time of the output time series as str
+                In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
+    degree : 2 or 3, degree of the polynomial for the lowess method
+    import_columns : list of str
+        list of df constant columns we want to import (ex: id, platform)    
+    geo: boolean,
+        optional if geo obj with projection
+    acc: boolean,
+        optional compute acceleration
+    Return : dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, and ae-an computed via lowess if degree = 3,+norms, id, platform
+    """
+    #index = time
+    if df.index.name!='time':
+        if df.index.name == None:
+            df = df.set_index('time')
+        else : 
+            df =df.reset_index().set_index('time')  
+    
+    # assert x, y in dataframe
+    if 'x' not in df or 'y' not in df :
+        assert False, "positions must be labelled as 'x' and 'y'"
+        
+    # store projection to align with dataframes produced
+    if geo :
+        proj_ref = df.geo.projection_reference
+    
+    # time in seconds from first time
+    df['date'] = (df.index-df.index.min())/pd.Timedelta('1s')
+    
+    #t_target
+    if isinstance(t_target, str) :
+        t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
+    #t_ target in seconds from first time
+    date_target = (t_target-t_target[0])/pd.Timedelta('1s')
+    
+    #apply lowess
+    x_out, u_out, ax_out = lowess(df.date.values, df.x.values, date_target.values, degree=degree)
+    y_out, v_out, ay_out = lowess(df.date.values, df.y.values, date_target.values, degree=degree)
+    
+    #dataframe
+    if degree ==2 :
+        df_out = pd.DataFrame(dict(x=x_out, y=y_out,u=u_out, v=v_out, time=t_target))
+    if degree ==3 :
+        df_out = pd.DataFrame(dict(x=x_out, y=y_out, u=u_out, v=v_out, ae=ax_out, an=ay_out, time=t_target))
+        df_out['aen'] = np.sqrt(df_out.ae**2 +df_out.an**2)
+    
+    df_out['uv'] = np.sqrt(df_out.u**2 +df_out.v**2)
+    
+    #import columns/info ex: id or time
+    if import_columns :
+        for column in import_columns :
+             df_out[column] = df[column][0]     
+    
+    # update lon/lat
+    if geo:
+        df_out['lon'] = df.lon.mean()
+        df_out['lat'] = df.lat.mean()
+        # first reset reference from df
+        df_out.geo.set_projection_reference(proj_ref)  # inplace
+        df_out.geo.compute_lonlat()  # inplace
+    
+    df_out =df_out.set_index('time')
+    
+    # recompute acceleration
+    if acc:
+        if geo :
+            df_out.geo.compute_accelerations(
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            )
+            df_out.geo.compute_accelerations(
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+            ) 
+            # should still recompute for non-geo datasets
+        else:
+            compute_accelerations(
+                df_out,
+                from_ = ("xy", "x", "y"),
+                names = ("ax", "ay", "axy"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )
+            compute_accelerations(
+                df_out,
+                from_ = ("velocities", "u", "v"),
+                names =("au", "av", "auv"),
+                centered_velocity=True,
+                time='index',
+                fill_startend=False,
+                inplace=True,
+                keep_dt=False
+            )     
+        
+    return df_out
+
+###########################################
+#-----------LOWESS METHOD------------#
+
+def smooth(df, method, t_target, parameters, import_columns=['id'], geo=True, acc=True):
+    """ 
+    Smooth and interpolated a trajectory
+    Parameters:
+    -----------
+            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            method : str
+                smoothing method among : 'spydell', 'variational' or 'lowess' 
+            t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
+                Output time series, as typically given by pd.date_range or the delta time of the output time series as str
+                In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
+            nb_pt_mean : odd int,
+                number of points of wich is applied the box mean
+            acc_cut : float, 
+                acceleration spike cut value
+            import_columns : list of str,
+                list of df constant columns we want to import (ex: id, platform)
+            geo: boolean,
+                optional if geo obj with projection
+            acc: boolean,
+                optional compute acceleration
+    Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
+    """
+    if method =='variational' :
+        param = ['position_error', 'acceleration_amplitude', 'acceleration_T','time_chunk']
+        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+        df_out = variational_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+        
+    elif method =='lowess' :
+        param = ['degree']
+        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+        df_out = lowess_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+        
+    elif method =='spydell' :
+        param = ['acc_cut', 'nb_pt_mean']
+        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+        df_out = spydell_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+        
+    else :
+        assert False, "method must be 'spydell', 'variational' or 'lowess' "
+    return df_out
+
+def smooth_all(df, method, t_target, parameters, import_columns=['id'], geo=True, acc=True):
+    dfa = df.groupby('id').apply(smooth, method, t_target, parameters, import_columns, geo, acc)
+    dfa = dfa.reset_index(level='id', drop=True)
+    return dfa
+
+
+
+#################################################################################
 # ------------------------ time window processing -------------------------------
 
 

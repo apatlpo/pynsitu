@@ -451,7 +451,7 @@ def get_spectrum(
         _v = pd.Series(np.random.randn(N))
 
     elif not isinstance(v, pd.Series):
-        v = pd.Series(
+        _v = pd.Series(
             v
         )  # harmonising type (solving pb np.ndarray -> isnan(), pd.Series ->isna(), iloc pb)
 

@@ -457,7 +457,7 @@ def spydell_smooth(df,
     Smooth and interpolated a trajectory with the method described in Spydell et al. 2021.
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
                 Output time series, as typically given by pd.date_range or the delta time of the output time series as str
                 In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
@@ -484,8 +484,8 @@ def spydell_smooth(df,
     # assert x, y in dataframe
     if 'x' not in df or 'y' not in df :
         assert False, "positions must be labelled as 'x' and 'y'"
-    if 'velocity_east' not in df or 'velocity_north' not in df :
-        assert False, "velocities must be labelled as 'velocity_east' and 'velocity_north'"
+    if 'u' not in df or 'v' not in df :
+        assert False, "velocities must be labelled as 'u' and 'v'"
         
     # store projection to align with dataframes produced
     if geo :
@@ -496,7 +496,7 @@ def spydell_smooth(df,
         t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
     
     #xarray for easy interpolation
-    ds = df.to_xarray()[['velocity_east', 'velocity_north']]
+    ds = df.to_xarray()[['u', 'v']]
     
     # 3) linearly interpolate velocities
     ds = ds.interp(time=t_target, method='linear')
@@ -505,8 +505,8 @@ def spydell_smooth(df,
     
     # 4) integrate velocities and find constant
     ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
-    x_cum = ds.velocity_east.cumsum('time')*reg_dt/pd.Timedelta('1s')
-    y_cum = ds.velocity_north.cumsum('time')*reg_dt/pd.Timedelta('1s')
+    x_cum = ds.u.cumsum('time')*reg_dt/pd.Timedelta('1s')
+    y_cum = ds.v.cumsum('time')*reg_dt/pd.Timedelta('1s')
     
     
     def msx_difference(x_0) :
@@ -521,8 +521,8 @@ def spydell_smooth(df,
     ds['y'] = y_0+y_cum
 
     # 5) remove spike and interpolate
-    ds['ax'] = ds.velocity_east.differentiate('time', datetime_unit='s')
-    ds['ay'] = ds.velocity_north.differentiate('time', datetime_unit='s')
+    ds['ax'] = ds.u.differentiate('time', datetime_unit='s')
+    ds['ay'] = ds.v.differentiate('time', datetime_unit='s')
     x = ds.where(ds.ax<acc_cut).x
     y = ds.where(ds.ay<acc_cut).y
     print(f"nb of spike removed { np.isnan(x).sum('time').values} over {ds.dims['time']}")
@@ -549,7 +549,7 @@ def spydell_smooth(df,
     # test box mean
     assert ds0.isel(time=n) == ds.isel(time=slice(0, nb_pt_mean)).mean(), 'pb with mean over n points'
     
-    ds0 = ds0.drop(['ax', 'ay']).rename({'velocity_east':'u', 'velocity_north':'v'})
+    ds0 = ds0.drop(['ax', 'ay'])
     
     # Build full dataframe
     df_out = ds0.to_dataframe()
@@ -722,7 +722,7 @@ def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
 
 #@njit("UniTuple(float64[:], 2)(float64[:], float64[:], float64[:])")
 @njit
-def lowess(time, x, time_target, degree):
+def lowess(time, x, time_target, degree=2):
     """ perform a lowess interpolation
     
     Parameters
@@ -765,7 +765,7 @@ def lowess(time, x, time_target, degree):
 
     return x_out, u_out, a_out
     
-def lowess_smooth (df, t_target, degree, import_columns = None, geo=False, acc=False):
+def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc=False):
     """ perform a lowess interpolation as in Elipot et al. 2016
     
     Parameters
@@ -882,12 +882,12 @@ def lowess_smooth (df, t_target, degree, import_columns = None, geo=False, acc=F
 ###########################################
 #-----------LOWESS METHOD------------#
 
-def smooth(df, method, t_target, parameters, import_columns=['id'], geo=True, acc=True):
+def smooth(df, method, t_target, parameters={}, import_columns=['id'], geo=True, acc=True):
     """ 
     Smooth and interpolated a trajectory
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
             method : str
                 smoothing method among : 'spydell', 'variational' or 'lowess' 
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
@@ -924,12 +924,12 @@ def smooth(df, method, t_target, parameters, import_columns=['id'], geo=True, ac
         assert False, "method must be 'spydell', 'variational' or 'lowess' "
     return df_out
 
-def smooth_all(df, method, t_target, parameters, import_columns=['id'], geo=True, acc=True):
+def smooth_all(df, method, t_target, parameters={}, import_columns=['id'], geo=True, acc=True):
     """ 
     Smooth and interpolated a trajectory
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
             method : str
                 smoothing method among : 'spydell', 'variational' or 'lowess' 
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str

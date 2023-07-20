@@ -925,6 +925,28 @@ def smooth(df, method, t_target, parameters, import_columns=['id'], geo=True, ac
     return df_out
 
 def smooth_all(df, method, t_target, parameters, import_columns=['id'], geo=True, acc=True):
+    """ 
+    Smooth and interpolated a trajectory
+    Parameters:
+    -----------
+            df :  dataframe with raw trajectory, must contain 'time', 'velocity_east', 'velocity_north'
+            method : str
+                smoothing method among : 'spydell', 'variational' or 'lowess' 
+            t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
+                Output time series, as typically given by pd.date_range or the delta time of the output time series as str
+                In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
+            nb_pt_mean : odd int,
+                number of points of wich is applied the box mean
+            acc_cut : float, 
+                acceleration spike cut value
+            import_columns : list of str,
+                list of df constant columns we want to import (ex: id, platform)
+            geo: boolean,
+                optional if geo obj with projection
+            acc: boolean,
+                optional compute acceleration
+    Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
+    """
     dfa = df.groupby('id').apply(smooth, method, t_target, parameters, import_columns, geo, acc)
     dfa = dfa.reset_index(level='id', drop=True)
     return dfa

@@ -74,6 +74,51 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
     df = df.drop(validated_single_spikes)
     return df
 
+
+########################################################
+#-----------FIND AND FILL WITH NAN BIG GAPS------------#
+def find_gap(df_gap, dtmax):
+    """Find gaps (return time start, time end) bigger than dtmax in the dataset
+
+    Parameters
+    ----------
+    df_gap : original dataframe
+        
+    dtmax: float
+        max gap length in seconds
+
+    """
+    df_gap = df_gap.reset_index()
+    time_end = df_gap[df_gap.dt>dtmax].time
+    index_start = time_end.index.values-1
+    time_start = df_gap.iloc[index_start].time
+    return time_start.values, time_end.values
+
+def nan_in_gap(df, df_gap, dtmax, inplace=False):
+    """Fill gaps bigger than dtmax with nan
+
+    Parameters
+    ----------
+    df : dataframe on which we want to put the gap
+    df_gap : original dataframe
+    dtmax: float
+        max gap length in seconds
+    inplace : boolean
+
+    """
+    df = df.reset_index()
+    if not inplace:
+        df = df.copy()
+    time_start, time_end = find_gap(df_gap, dtmax)
+    for i in range(len(time_start)):
+        test1 = df.time>time_start[i]
+        test2 = df.time<time_end[i]
+        test = np.logical_not(test1 &test2)
+        df = df.where(test)
+    if not inplace :
+        return df.set_index('time')
+
+
 ###########################################
 #-----------VARIATIONNAL METHOD------------#
 def variational_smooth(
@@ -140,11 +185,15 @@ def variational_smooth(
     # assert x, y in dataframe
     if 'x' not in df or 'y' not in df :
         assert False, "positions must be labelled as 'x' and 'y'"
-    if 'lon' not in df or 'lat' not in df :
-        assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
+    if geo : 
+        if 'lon' not in df or 'lat' not in df :
+            assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
         
-    #select only x, y
-    df = df[['x', 'y', 'lon', 'lat']+import_columns]
+    #select only x, y, lon, lat if needed
+    var = ['x', 'y']+import_columns
+    if geo : var+=['lon', 'lat']
+    df = df[['x', 'y']+import_columns]
+    
     
     #t_target
     if isinstance(t_target, str) :
@@ -247,13 +296,13 @@ def variational_smooth(
     
     # compute velocity :
     if geo : 
-        df_out.geo.compute_velocities(names=("u", "v", "uv"),
+        df_out.geo.compute_velocities(names=("u", "v", "U"),
                                       inplace=True,
                                       fill_startend =False,)
     else : 
         compute_velocities(
             df_out, "x", "y", "index",
-            names = ("u", "v", "uv"),
+            names = ("u", "v", "U"),
             distance = None,
             inplace=True,
             centered=True,
@@ -265,7 +314,7 @@ def variational_smooth(
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -273,7 +322,7 @@ def variational_smooth(
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -284,7 +333,7 @@ def variational_smooth(
             compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -294,14 +343,14 @@ def variational_smooth(
             compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
-            )   
-    
+            )     
+        
     #import columns/info ex: id or time
     if import_columns :
         for column in import_columns :
@@ -346,7 +395,11 @@ def _variational_smooth_one(
     df_out["x"] = solve(L, I.T.dot(df["x"].values))
     # y
     df_out["y"] = solve(L, I.T.dot(df["y"].values))
-
+    
+    # replace 0 by nan
+    df_out["x"] = df_out.x.replace(0, np.nan)
+    df_out["y"] = df_out.y.replace(0, np.nan)
+    
     # update lon/lat
     if geo:
         # first reset reference from df
@@ -457,7 +510,7 @@ def spydell_smooth(df,
     Smooth and interpolated a trajectory with the method described in Spydell et al. 2021.
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
+            df :  dataframe with raw trajectory, must contain 'time', 'x', 'y', 'velocity_east', 'velocity_north'
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
                 Output time series, as typically given by pd.date_range or the delta time of the output time series as str
                 In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
@@ -479,7 +532,8 @@ def spydell_smooth(df,
         if df.index.name == None:
             df = df.set_index('time')
         else : 
-            df =df.reset_index().set_index('time')  
+            df =df.reset_index().set_index('time')
+    print(df.index.name)  
     
     # assert x, y in dataframe
     if 'x' not in df or 'y' not in df :
@@ -502,7 +556,7 @@ def spydell_smooth(df,
     ds = ds.interp(time=t_target, method='linear')
     
     reg_dt =t_target[1] - t_target[0] 
-    
+    print(reg_dt)
     # 4) integrate velocities and find constant
     ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
     x_cum = ds.u.cumsum('time')*reg_dt/pd.Timedelta('1s')
@@ -516,6 +570,7 @@ def spydell_smooth(df,
     from scipy.optimize import minimize
     x_0 = minimize(msx_difference, df.x[0]).x
     y_0 = minimize(msy_difference, df.y[0]).x
+
     
     ds['x'] = x_0+x_cum
     ds['y'] = y_0+y_cum
@@ -567,13 +622,13 @@ def spydell_smooth(df,
         # first reset reference from df
         df_out.geo.set_projection_reference(proj_ref)  # inplace
         df_out.geo.compute_lonlat()  # inplace
-        
+
     # recompute acceleration
     if acc:
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -581,7 +636,7 @@ def spydell_smooth(df,
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -592,7 +647,7 @@ def spydell_smooth(df,
             compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -602,14 +657,14 @@ def spydell_smooth(df,
             compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
-            )  
-              
+            )     
+            
     return df_out
 
 ###########################################
@@ -818,7 +873,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
         df_out = pd.DataFrame(dict(x=x_out, y=y_out, u=u_out, v=v_out, ae=ax_out, an=ay_out, time=t_target))
         df_out['aen'] = np.sqrt(df_out.ae**2 +df_out.an**2)
     
-    df_out['uv'] = np.sqrt(df_out.u**2 +df_out.v**2)
+    df_out['U'] = np.sqrt(df_out.u**2 +df_out.v**2)
     
     #import columns/info ex: id or time
     if import_columns :
@@ -840,7 +895,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -848,7 +903,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -859,7 +914,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "axy"),
+                names = ("ax", "ay", "Axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -869,13 +924,14 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "auv"),
+                names =("au", "av", "Auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
             )     
+           
         
     return df_out
 

@@ -124,6 +124,7 @@ def nan_in_gap(df, df_gap, dtmax, inplace=False):
 def variational_smooth(
     df,
     t_target,
+    acc_cut,
     position_error,
     acceleration_amplitude,
     acceleration_T,
@@ -153,6 +154,8 @@ def variational_smooth(
                     Output time series, as typically given by pd.date_range
                     Note that the problem seems ill-posed in the downsampling case ... need
                     to be fixed
+                acc_cut : float,
+                    acceleration spike cut
                 position_error: float
                     Position error in meters
                 acceleration_amplitude: float
@@ -180,20 +183,22 @@ def variational_smooth(
         if df.index.name == None:
             df = df.set_index('time')
         else : 
-            df =df.reset_index().set_index('time')
-            
+            df =df.reset_index().set_index('time') 
+    
     # assert x, y in dataframe
     if 'x' not in df or 'y' not in df :
         assert False, "positions must be labelled as 'x' and 'y'"
-    if geo : 
+    if geo :
         if 'lon' not in df or 'lat' not in df :
             assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
-        
-    #select only x, y, lon, lat if needed
-    var = ['x', 'y']+import_columns
-    if geo : var+=['lon', 'lat']
-    df = df[['x', 'y']+import_columns]
+    if 'acceleration' not in df :
+        assert False, "'acceleration' should be provided"
     
+    # despike acceleration
+    df = despike_isolated(df, acc_cut)
+    
+    #select only x, y
+    df = df[['x', 'y', 'lon', 'lat']+import_columns]
     
     #t_target
     if isinstance(t_target, str) :
@@ -296,13 +301,13 @@ def variational_smooth(
     
     # compute velocity :
     if geo : 
-        df_out.geo.compute_velocities(names=("u", "v", "U"),
+        df_out.geo.compute_velocities(names=("u", "v", "uv"),
                                       inplace=True,
                                       fill_startend =False,)
     else : 
-        compute_velocities(
+        pyn.geo.compute_velocities(
             df_out, "x", "y", "index",
-            names = ("u", "v", "U"),
+            names = ("u", "v", "uv"),
             distance = None,
             inplace=True,
             centered=True,
@@ -314,7 +319,7 @@ def variational_smooth(
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -322,7 +327,7 @@ def variational_smooth(
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -333,7 +338,7 @@ def variational_smooth(
             compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -343,14 +348,14 @@ def variational_smooth(
             compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
-            )     
-        
+            )   
+    
     #import columns/info ex: id or time
     if import_columns :
         for column in import_columns :
@@ -368,7 +373,7 @@ def _variational_smooth_one(
     acceleration_T,
     geo,
 ):
-    """core processing for resample_smooth, process one time window"""
+    """core processing for variational_smooth, process one time window"""
 
     # init final structure
     df_out = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
@@ -395,11 +400,7 @@ def _variational_smooth_one(
     df_out["x"] = solve(L, I.T.dot(df["x"].values))
     # y
     df_out["y"] = solve(L, I.T.dot(df["y"].values))
-    
-    # replace 0 by nan
-    df_out["x"] = df_out.x.replace(0, np.nan)
-    df_out["y"] = df_out.y.replace(0, np.nan)
-    
+
     # update lon/lat
     if geo:
         # first reset reference from df
@@ -498,6 +499,7 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
 #-----------SPYDELL METHOD------------#
 
 import warnings
+import warnings
 def spydell_smooth(df,
                        t_target,
                        acc_cut = 1e-3,
@@ -550,7 +552,9 @@ def spydell_smooth(df,
         t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
     
     #xarray for easy interpolation
-    ds = df.to_xarray()[['u', 'v']]
+    ds = df.to_xarray()[['x', 'y', 'u', 'v']]
+    
+    # fill little gap 
     
     # 3) linearly interpolate velocities
     ds = ds.interp(time=t_target, method='linear')
@@ -558,20 +562,23 @@ def spydell_smooth(df,
     reg_dt =t_target[1] - t_target[0] 
     print(reg_dt)
     # 4) integrate velocities and find constant
-    ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
+    #ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
     x_cum = ds.u.cumsum('time')*reg_dt/pd.Timedelta('1s')
     y_cum = ds.v.cumsum('time')*reg_dt/pd.Timedelta('1s')
     
-    
-    def msx_difference(x_0) :
-        return abs(ms_x-((x_0+x_cum)**2).mean())
-    def msy_difference(y_0) :
-        return abs(ms_y-((y_0+y_cum)**2).mean())
+    #def msx_difference(x_0) :
+        #return abs(ms_x-((x_0+x_cum)**2).mean())
+    #def msy_difference(y_0) :
+        #return abs(ms_y-((y_0+y_cum)**2).mean())
     from scipy.optimize import minimize
-    x_0 = minimize(msx_difference, df.x[0]).x
-    y_0 = minimize(msy_difference, df.y[0]).x
+    def msx_difference(x_0) :
+        return ((ds.x - x_0-x_cum)**2).mean()
+    def msy_difference(y_0) :
+        return ((ds.x - y_0-y_cum)**2).mean()
+    from scipy.optimize import minimize
+    x_0 = minimize(msx_difference, ds.x[0]).x
+    y_0 = minimize(msy_difference, ds.y[0]).x
 
-    
     ds['x'] = x_0+x_cum
     ds['y'] = y_0+y_cum
 
@@ -622,13 +629,13 @@ def spydell_smooth(df,
         # first reset reference from df
         df_out.geo.set_projection_reference(proj_ref)  # inplace
         df_out.geo.compute_lonlat()  # inplace
-
+        
     # recompute acceleration
     if acc:
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -636,7 +643,7 @@ def spydell_smooth(df,
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -644,29 +651,28 @@ def spydell_smooth(df,
             ) 
             # should still recompute for non-geo datasets
         else:
-            compute_accelerations(
+            pyn.geo.compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
             )
-            compute_accelerations(
+            pyn.geo.compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
-            )     
-            
+            )  
+              
     return df_out
-
 ###########################################
 #-----------LOWESS METHOD------------#
 
@@ -713,7 +719,7 @@ def find_nearest_neighboors(time, t, i):
     i is a starting value (closest point)
     """
     nt = len(time)
-    nb = 4
+    nb = 5
     ib = [0 for _ in range(nb)]
     ib[0] = i
     #initiate direction for advance search (with problem at boundaries solved)
@@ -749,7 +755,8 @@ def I_func(v):
 def solve_position_velocity(t_nb, x_nb, time_target):
     # solve for x and u :  x + u*(t_nb-date_target) = x_nb
     t = t_nb - time_target
-    dt = t_nb[-1]-t_nb[0]
+    t_nbs = np.sort(t_nb)
+    dt = t_nbs[-1]-t_nbs[0]
     weights = 70/81*(1-np.abs(t/dt)**3)**3 * I_func( t/dt )
     w = np.sum(weights)
     wt = np.sum(weights * t)
@@ -763,7 +770,8 @@ def solve_position_velocity(t_nb, x_nb, time_target):
 def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
     # solve for x and u :  x + u*(t_nb-date_target) = x_nb
     t = t_nb - time_target
-    dt = t_nb[-1]-t_nb[0]
+    t_nbs = np.sort(t_nb)
+    dt = t_nbs[-1]-t_nbs[0]
     weights = 70/81*(1-np.abs(t/dt)**3)**3 * I_func( t/dt )
     w = np.sum(weights)
     wt = np.sum(weights * t)
@@ -801,27 +809,35 @@ def lowess(time, x, time_target, degree=2):
 
     i_closest = np.argmin(d, axis=0)#the indice of the nearest time in the raw time series (time) for each time of the regular time series (time_target)
 
-    x_out = np.zeros(nt)
-    u_out = np.zeros(nt)
-    a_out = np.zeros(nt)
+    x_out = np.full(nt, np.nan)
+    u_out = np.full(nt, np.nan)
+    a_out = np.full(nt, np.nan)
     
     for i in prange(nt):
-        i_nb = find_nearest_neighboors(time, time_target[i], i_closest[i])
+        i_nb =np.arange(i_closest[i]-2, i_closest[i]+3)
+        a = [i<0 or i>len(time)-1 for i in i_nb]#np.any not ok with numba
+        if True in a:
+            continue # start-end edge stay nan values
+        #i_nb = find_nearest_neighboors(time, time_target[i], i_closest[i])
         t_nb = time[i_nb]
         x_nb = x[i_nb]
         if degree == 2:
             try : 
                 x_out[i], u_out[i] = solve_position_velocity(t_nb, x_nb, time_target[i])
-            except : print('WARNING :  pb with solve_position_velocity')  
+            except : 
+                print('WARNING :  pb with solve_position_velocity, set to nan', 't_target =',time_target[i]) 
+                x_out[i], u_out[i] = np.nan, np.nan
         elif degree ==3 :
             try :
                 x_out[i], u_out[i], a_out[i] = solve_position_velocity_acceleration(t_nb, x_nb, time_target[i])
-            except : print('WARNING :  pb with solve_position_velocity')   
-
+            except : 
+                print('WARNING :  pb with solve_position_velocity, set to nan', 't_target =', time_target[i]) 
+                x_out[i], u_out[i], a_out[i] = np.nan, np.nan, np.nan
+                
     return x_out, u_out, a_out
     
 def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc=False):
-    """ perform a lowess interpolation as in Elipot et al. 2016
+    """ perform a lowess interpolation
     
     Parameters
     ----------
@@ -873,7 +889,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
         df_out = pd.DataFrame(dict(x=x_out, y=y_out, u=u_out, v=v_out, ae=ax_out, an=ay_out, time=t_target))
         df_out['aen'] = np.sqrt(df_out.ae**2 +df_out.an**2)
     
-    df_out['U'] = np.sqrt(df_out.u**2 +df_out.v**2)
+    df_out['uv'] = np.sqrt(df_out.u**2 +df_out.v**2)
     
     #import columns/info ex: id or time
     if import_columns :
@@ -895,7 +911,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
         if geo :
             df_out.geo.compute_accelerations(
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -903,7 +919,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             )
             df_out.geo.compute_accelerations(
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -914,7 +930,7 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             compute_accelerations(
                 df_out,
                 from_ = ("xy", "x", "y"),
-                names = ("ax", "ay", "Axy"),
+                names = ("ax", "ay", "axy"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
@@ -924,35 +940,110 @@ def lowess_smooth (df, t_target, degree=2, import_columns = None, geo=False, acc
             compute_accelerations(
                 df_out,
                 from_ = ("velocities", "u", "v"),
-                names =("au", "av", "Auv"),
+                names =("au", "av", "auv"),
                 centered_velocity=True,
                 time='index',
                 fill_startend=False,
                 inplace=True,
                 keep_dt=False
-            )     
-           
-        
+            ) 
     return df_out
 
 ###########################################
-#-----------LOWESS METHOD------------#
+#-----------APPLY INTERPOLATIONS METHODS------------#
 
-def smooth(df, method, t_target, parameters={}, import_columns=['id'], geo=True, acc=True):
+
+def find_gap(df_gap, dtmax):
+    """Find gaps (return time start, time end) bigger than dtmax in the dataset
+
+    Parameters
+    ----------
+    df_gap : original dataframe
+        
+    dtmax: float
+        max gap length in seconds
+
+    """
+    df_gap = df_gap.reset_index()
+    time_end = df_gap[df_gap.dt>dtmax].time
+    index_start = time_end.index.values-1
+    time_start = df_gap.iloc[index_start].time
+    return time_start.values, time_end.values
+
+def divide_blocs(df, t_target, dtmax):
+    """Cut out gaps bigger than dtmax and return blocs
+
+    Parameters
+    ----------
+    df : original dataframe
+    t_target : pd.datetime index, 
+        interpolation times
+    dtmax: float
+        max gap length in seconds
+    Returns
+    ----------
+    DF : list of dataframe,
+        blocs without gaps bigger than dtmax
+    DF_target :list of pd.date_time_index,
+        list of times out gaps bigger than dtmax
+    DF_target_gap : list of pd.date_time_index,
+        list of times in gaps bigger than dtmax
+    """
+    # divide into blocs if gap bigger than maxgap
+    DF =[]
+    DF_target = []
+    DF_target_gap = []
+    
+    df = df.reset_index()
+    ts, te = find_gap(df, dtmax)
+    tcut = np.sort([df.time.min()]+list(ts)+list(te)+[df.time.max()])
+    for i in range(0,len(tcut)-1,2):
+        test1 = df.time>=tcut[i]
+        test2 = df.time<=tcut[i+1]
+        test = test1 &test2
+        DF.append(df[test])
+        test = (t_target>=tcut[i])&(t_target<=tcut[i+1])
+        DF_target.append(t_target[test])
+        DF_target_gap.append(t_target[np.logical_not(test)])
+    return DF, DF_target, DF_target_gap
+
+def gap(time, t_target) :
+    """Returns time distance between time in t_target and their nearest neightbor in time
+
+    Parameters
+    ----------
+    time : ndarray of datetime, 
+    t_target : ndarray of datetime, 
+    """
+    nt = len(t_target)
+    assert t_target[0]>=time[0], "time_target[0] is not within time span"
+    assert t_target[-1]<=time[-1], "time_target[-1] is not within time span"
+    
+    d = np.abs(time.reshape(len(time), 1) -t_target.reshape(1, nt))
+    i_closest = np.argmin(d, axis=0)
+    t_closest = np.min(d, axis=0)
+    
+    return (t_target - time[i_closest])/pd.Timedelta('1s')
+
+def smooth(df, method, t_target, maxgap=1e-3, parameters=dict(), import_columns=['id'], geo=True, acc=True):
     """ 
     Smooth and interpolated a trajectory
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
+            df :  dataframe with raw trajectory,
+                must contain 'time', 'velocity_east', 'velocity_north'
             method : str
                 smoothing method among : 'spydell', 'variational' or 'lowess' 
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
                 Output time series, as typically given by pd.date_range or the delta time of the output time series as str
                 In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
-            nb_pt_mean : odd int,
-                number of points of wich is applied the box mean
-            acc_cut : float, 
-                acceleration spike cut value
+            maxgap : float,
+                max gap tolerated in SECONDS
+            parameters : dict,
+                contains all parameters to give to method :
+                - variational : dict(acc_cut =, position_error=, acceleration_amplitude=, acceleration_T=,time_chunk=)
+                - lowess : dict(degree=)
+                - spydell : dict(acc_cut =, nb_pt_mean=)
             import_columns : list of str,
                 list of df constant columns we want to import (ex: id, platform)
             geo: boolean,
@@ -961,40 +1052,89 @@ def smooth(df, method, t_target, parameters={}, import_columns=['id'], geo=True,
                 optional compute acceleration
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
-    if method =='variational' :
-        param = ['position_error', 'acceleration_amplitude', 'acceleration_T','time_chunk']
-        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
-        df_out = variational_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+    
+    #index = time
+    if df.index.name!='time':
+        if df.index.name == None:
+            df = df.set_index('time')
+        else : 
+            df =df.reset_index().set_index('time')
+    
+    #t_target
+    if isinstance(t_target, str) :
+        t_target = pd.date_range(df.index.min(), df.index.max(), freq = t_target)
+    else : 
+        # enforce t_target type
+        t_target = pd.DatetimeIndex(t_target)    
         
-    elif method =='lowess' :
-        param = ['degree']
-        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
-        df_out = lowess_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
-        
-    elif method =='spydell' :
-        param = ['acc_cut', 'nb_pt_mean']
-        assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
-        df_out = spydell_smooth(df, t_target, **parameters, import_columns=import_columns, geo=geo, acc=acc)
-        
-    else :
-        assert False, "method must be 'spydell', 'variational' or 'lowess' "
-    return df_out
+    # divide into blocs if gap bigger than maxgap
+    DF, DF_target, DF_target_gap = divide_blocs(df, t_target, maxgap)
+    
+    DF_out = []
+    for i in range(len(DF)):
+        df_, t_target_ = DF[i], DF_target[i]
+        if method =='variational' :
+            param = ['acc_cut', 'position_error', 'acceleration_amplitude', 'acceleration_T','time_chunk']
+            assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+            df_out = variational_smooth(df_, t_target_, **parameters, import_columns=import_columns, geo=geo, acc=acc)
 
-def smooth_all(df, method, t_target, parameters={}, import_columns=['id'], geo=True, acc=True):
+        elif method =='lowess' :
+            param = ['degree']
+            assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+            df_out = lowess_smooth(df_, t_target_, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+
+        elif method =='spydell' :
+            param = ['acc_cut', 'nb_pt_mean']
+            assert np.all([p in param for p in parameters]), f"parameters keys must be in {param}"
+            df_out = spydell_smooth(df_, t_target_, **parameters, import_columns=import_columns, geo=geo, acc=acc)
+
+        else :
+            assert False, "method must be 'spydell', 'variational' or 'lowess' "
+        
+        DF_out.append(df_out)
+    t_target_gap = pd.DatetimeIndex(pd.concat([pd.Series(dti) for dti in DF_target])).sort_values() 
+    dfo = pd.concat(DF_out)
+    dfo['gap_mask'] = 0 # out of gaps
+    
+    #add back gap t_target values, fill nan values : 
+    # - linearly interpolating for positions velocities etc
+    # - gap_mask nan=1
+    dfo = dfo.reindex(t_target)
+    dfo_ = dfo.drop(columns=['gap_mask']+import_columns).interpolate()
+    gap_mask = dfo['gap_mask'].fillna(1) # in gaps
+    dfo = pd.concat([dfo_,gap_mask], axis=1)
+    
+    #gap value : time distance to the nearest neightbors in seconds
+    dfo['gaps'] = gap(df.index.values, t_target.values)
+    
+    #update dt
+    
+    #import columns/info ex: id or time
+    if import_columns :
+        for column in import_columns :
+             dfo[column] = df[column][0]  
+                
+    return dfo 
+
+def smooth_all(df, method, t_target, maxgap=1e-3, parameters=dict(), import_columns=['id'], geo=True, acc=True):
     """ 
-    Smooth and interpolated a trajectory
+    Smooth and interpolated all trajectories
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'u', 'v'
+            df :  dataframe with raw trajectory,
+                must contain 'time', 'velocity_east', 'velocity_north'
             method : str
                 smoothing method among : 'spydell', 'variational' or 'lowess' 
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
                 Output time series, as typically given by pd.date_range or the delta time of the output time series as str
                 In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time 
-            nb_pt_mean : odd int,
-                number of points of wich is applied the box mean
-            acc_cut : float, 
-                acceleration spike cut value
+            maxgap : float,
+                max gap tolerated in SECONDS
+            parameters : dict,
+                contains all parameters to give to method :
+                - variational : dict(acc_cut =, position_error=, acceleration_amplitude=, acceleration_T=,time_chunk=)
+                - lowess : dict(degree=)
+                - spydell : dict(acc_cut =, nb_pt_mean=)
             import_columns : list of str,
                 list of df constant columns we want to import (ex: id, platform)
             geo: boolean,
@@ -1003,11 +1143,9 @@ def smooth_all(df, method, t_target, parameters={}, import_columns=['id'], geo=T
                 optional compute acceleration
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
-    dfa = df.groupby('id').apply(smooth, method, t_target, parameters, import_columns, geo, acc)
+    dfa = df.groupby('id').apply(smooth, method, t_target, maxgap, parameters, import_columns, geo, acc)
     dfa = dfa.reset_index(level='id', drop=True)
     return dfa
-
-
 
 #################################################################################
 # ------------------------ time window processing -------------------------------

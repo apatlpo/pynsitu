@@ -318,7 +318,34 @@ class GeoAccessor:
 
         if not inplace:
             return df
+        
+    def compute_dt(
+        self,
+        time="index",
+        fill_startend=True,
+        inplace=False,  # need to return something to give to apply_xy
+    ):
+        """compute dt
+        Parameters
+        ----------
+        time: str, optional
+            Column name. Default is "index", i.e. considers the index
+        fill_startend : boolean, optional
+            fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        inplace : boolean, optional
+            if True add dt to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
+        """
+        df = compute_dt(
+            self._obj,
+            time,
+            fill_startend=fill_startend,
+            inplace=inplace,
+        )
 
+        if not inplace:
+            return df
+        
+        
     def compute_accelerations(
         self,
         from_=(
@@ -947,6 +974,61 @@ def compute_velocities(
 
     if not inplace:
         return df
+
+    
+def compute_dt(
+    df,
+    time,
+    fill_startend=False,
+    inplace=False,
+):
+
+    """core method to compute dt from a dataframe
+    Parameters
+    ----------
+    df : dataframe,
+        dataframe containing trajectories
+    time: str
+        Column name corresponding to time.
+        Can be "index", in which case the index is used
+    fill_startend : boolean
+        fill dataframe start and end (Nan values due to the derivation/centering method) (True by default)
+    inplace : boolean, optional
+        if True add dt to dataset, if False return only a dataframe with time, id (for identification) and computed dt.
+    """
+
+    # drop duplicates
+    if not inplace:
+        df = df[~df.index.duplicated(keep="first")]
+    else:
+        if df.index.duplicated(keep="first").any():
+            df.reset_index(inplace=True)
+            df.drop_duplicates(subset="time", keep="first", inplace=True)
+            df.set_index("time", inplace=True)
+
+    # dt_i = t_i - t_{i-1}
+    if time == "index":
+        t = df.index.to_series()
+        dt = t.diff() / pd.Timedelta("1s")
+        dt.index = df.index  # necessary?
+        df.loc[:, "dt"] = dt
+    else:
+        t = df[time]
+        dt = t.diff() / pd.Timedelta("1s")
+        df.loc[:, "dt"] = dt
+    # is_uniform = df["dt"].dropna().unique().size == 1
+
+    # fill end values
+    if fill_startend:
+        if inplace:
+            df.bfill(inplace=True)
+            df.ffill(inplace=True)
+        else:
+            df = df.bfill().ffill()
+
+    if not inplace:
+        return df
+
 
 
 # ----------------------------- xarray accessor --------------------------------

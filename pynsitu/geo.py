@@ -270,6 +270,7 @@ class GeoAccessor:
 
         return self.apply_xy(_resample)
 
+    ## --- velocity/acceleration
     def compute_velocities(
         self,
         time="index",

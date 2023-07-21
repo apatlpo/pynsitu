@@ -126,7 +126,7 @@ class Deployment(object):
         self.end = end
 
         if meta is None:
-            if len(loglines) == 3:
+            if loglines is not None and len(loglines) == 3:
                 meta = loglines[2]
                 assert isinstance(meta, dict)
                 if "meta" in meta:
@@ -249,7 +249,8 @@ class Platform(UserDict):
         for t in ["meta", "sensors", "deployments"]:
             if t in self.data and key in self.data[t]:
                 return self.data[t][key]
-        return self.data[key]
+        if key in self.data:
+            return self.data[key]
 
     def deployments(self):
         for s in self.data["deployments"]:
@@ -723,13 +724,11 @@ class Campaign(object):
 
     def load(self, item, toframe=False, ignore=False):
         """load processed data files
-        recall item
 
         Parameters
         ----------
         item: str
-            Name of netcdf file (or platform or deployments but not working at the moment)
-            Can contain
+            Name of netcdf file
         toframe: boolean
             Transform to pd.DataFrame
         ignore: boolean
@@ -742,68 +741,60 @@ class Campaign(object):
             {'platform0': {'deployment0': data, ...}}
         """
 
+        file_path = self.load_path(item)
+        assert file_path is not None or ignore, "File(s) not found"
+
         # straight netcdf file
-        if ".nc" in item:
-            file = os.path.join(self["path_processed"], item)
-            if not os.path.isfile(file) and ignore:
-                return None
-            ds = xr.open_dataset(file)
+        if isinstance(file_path, str):
+            ds = xr.open_dataset(file_path)
             if toframe:
                 ds = ds.to_dataframe()
             return ds
+        elif isinstance(file_path, dict):
+            D = {k: xr.open_dataset(f) for k, f in file_path.items()}
+            if toframe:
+                D = {k: ds.to_dataframe() for k, ds in D.items()}
+            return D
+
+    def load_path(self, item):
+        """load processed file path(s)
+
+        Parameters
+        ----------
+        item: str
+            Name of netcdf file
+
+        Returns
+        -------
+        file_path: str, dict
+
+        """
+        # straight netcdf file
+        if ".nc" in item:
+            file = os.path.join(self["path_processed"], item)
+            if not os.path.isfile(file):
+                return None
+            return file
 
         if "*" in item:
             files = sorted(
                 glob(os.path.join(self["path_processed"], item)),
             )
+            if len(files) == 0:
+                return None
             keys = [f.split("/")[-1].replace(".nc", "") for f in files]
         else:
             files = sorted(
                 glob(os.path.join(self["path_processed"], item + "_*.nc")),
             )
+            if len(files) == 0:
+                return None
             keys = [
                 f.split("/")[-1].replace(item + "_", "").replace(".nc", "")
                 for f in files
             ]
 
-        D = {k: xr.open_dataset(f) for f, k in zip(files, keys)}
-        if toframe:
-            D = {k: ds.to_dataframe() for k, ds in D.items()}
-
-        return D
-
-    def _get_processed_files(
-        self,
-        unit="*",
-        item="*",
-        deployment="*",
-        extension="nc",
-    ):
-        """Return processed data files
-
-        Parameters
-        ----------
-        unit, item, d, extention: str, optional
-            Defaults: '*', '*', '*', 'nc'
-            Typical file path: self["path_processed"]+unit+'_'+item+'_'+deployment+'.'+extension
-
-        """
-        if item is None:
-            _item = ""
-        else:
-            _item = item + "_"
-        if any([_ == "*" for _ in [unit, item, deployment]]):
-            return glob(
-                os.path.join(
-                    self["path_processed"],
-                    unit + "_" + _item + deployment + "." + extension,
-                )
-            )
-        else:
-            return os.path.join(
-                self["path_processed"],
-                unit + "_" + _item + deployment + "." + extension,
-            )
+        return {k: f for f, k in zip(files, keys)}
 
 
 _default_campaign_meta = {

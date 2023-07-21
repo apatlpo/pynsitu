@@ -2,6 +2,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype as is_datetime
 import xarray as xr
 
 from scipy import signal
@@ -144,7 +145,7 @@ class TimeSeriesAccessor:
         if inplace:
             self._obj = df_interp
         else:
-            return df
+            return df_interp
 
     def resample_centered(self, freq):
         """centered resampling, i.e. data at t is representative
@@ -167,8 +168,26 @@ class TimeSeriesAccessor:
         return df
 
     # signal processing
-    def spectrum(self, method="welch"):
-        pass
+    def spectrum(self, unit="1T", limit=None, **kwargs):
+        df = self._obj
+        # check if data is on a regular timeline and resample if need be
+        if not self._time_index:
+            df = df.set_index(self._time)
+        dt = df.reset_index()[self._time].diff()
+        # if is_datetime(df[self._time]):
+        #    dt = dt/pd.Timedelta(time_unit)
+        if dt.nunique() > 1:
+            # need to resample data
+            dt = dt.mode()
+            rule = unit.replace("1", "{}".format(int(dt / pd.Timedelta("1T"))))
+            print("Timeseries is not regular in time. Resampling with rule " + rule)
+            df = df.resample(rule).interpolate(limit=limit)
+        #
+        E = {}
+        for c in df.columns:
+            # should test if of numeric type
+            E[c] = compute_spectrum(df[c], **kwargs)
+        return pd.DataFrame(E)
 
     # tidal analysis
     def tidal_analysis(
@@ -242,6 +261,30 @@ class TimeSeriesAccessor:
             s = pytide_predict_tides(time, amplitudes, **kwargs)
 
         return pd.Series(s, index=time, name=f"{col}_tidal")
+
+    def package_harmonics(self):
+        """package harmonics for storage"""
+        H = []
+        for c, h in self._tidal_harmonics.items():
+            H.append(h.to_xarray().expand_dims(vars=pd.Index([c])))
+        ds = xr.concat(H, "vars")
+        # convert to real/imag for netcdf storage
+        ds["amplitude_real"] = np.real(ds["amplitude"])
+        ds["amplitude_imag"] = np.imag(ds["amplitude"])
+        ds = ds.drop("amplitude")
+        return ds
+
+    def load_harmonics(self, file):
+        """load harmonics from a file"""
+        ds = xr.open_dataset(file)
+        dfh = {}
+        for c in ds.vars:
+            _c = str(c.values)
+            _df = ds.sel(vars=_c).to_dataframe()
+            _df["amplitude"] = _df["amplitude_real"] + 1j * _df["amplitude_imag"]
+            _df = _df.drop(columns=["amplitude_real", "amplitude_imag"])
+            dfh[_c] = _df
+        self._tidal_harmonics = dfh
 
 
 # ----------------------------- xarray accessor --------------------------------
@@ -402,7 +445,21 @@ def generate_filter(
 
 
 def filter_response(h, dt=1 / 24):
-    """Returns the frequency response"""
+    """Returns the frequency response
+
+    Parameters
+    ----------
+    h: np.array
+        filter kernel/weights
+    dt: float, optional
+
+    Returns
+    -------
+    H: np.array
+        frequency response function
+    w: np.array
+        frequencies
+    """
     w, hh = signal.freqz(h, worN=8000, fs=1 / dt)
     return hh, w
 
@@ -410,32 +467,32 @@ def filter_response(h, dt=1 / 24):
 # -------------------------- spectral analysis ----------------------------------
 
 
-def get_spectrum(
+def compute_spectrum(
     v,
-    N,
+    N=None,
     dt=None,
-    N_fill_limit=24,
-    method="periodogram",
+    method="welch",
     detrend=False,
-    nan_ratio=0.1,
+    fill_limit=24,
+    nan_ratio_limit=0.1,
     **kwargs,
 ):
-    """Compute a lagged correlation between two time series
-    These time series are assumed to be regularly sampled in time
-    and along the same time line.
+    """Compute the spectrum of a time series
+
     Parameters
     ----------
         v: ndarray, pd.Series
-            Time series, the index must be time if dt is not provided
+            Time series, the index must be time (and named as it) if dt is not provided
         N: int
             Length of the output
         dt: float, optional
             Time step
         N_fill_limit : int
-            Limit length of Nan gap filled by interpolatation
+            Limit length of Nan gap filled by interpolation
         method: string
             Method that will be employed for spectral calculations.
-            Default is 'periodogram'
+            Default is 'welch',
+            Options: 'welch', 'periodogram'
         detrend: str or function or False, optional
             Turns detrending on or off. Default is False.
         nan_ratio : float between 0 and 1
@@ -448,53 +505,66 @@ def get_spectrum(
         - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
     """
     if v is None:
-        _v = pd.Series(np.random.randn(N))
+        v = pd.Series(np.random.randn(N))
+    else:
+        N = v.size
 
-    elif not isinstance(v, pd.Series):
+    if not isinstance(v, pd.Series):
         v = pd.Series(
             v
         )  # harmonising type (solving pb np.ndarray -> isnan(), pd.Series ->isna(), iloc pb)
+        v.index.rename("time", inplace=True)
 
-    # returned spectrum is nan array if to many nan holes
-    elif (
-        v.iloc[:N].isna().sum() / N >= nan_ratio
-    ):  # Avoids computing spectra where a large part of value come from interpolation
+    nan_ratio = v.iloc[:N].isna().sum() / N >= nan_ratio_limit
+    if nan_ratio > nan_ratio_limit:
+        # fill all timeseries with nan if too many nan's
+        # Avoids computing spectra where a large part of value come from interpolation
         warnings.warn(
-            f"Nan values ratio {round(100 * v.iloc[:N].isna().sum()/N)}% exceeds the {100*nan_ratio}% tolerated limit, replace spectrum by nan array",
+            f"Nan values ratio {round(100*nan_ratio)}% exceeds the {100*nan_ratio_limit}% tolerated limit, replace spectrum by nan array",
             UserWarning,
         )
-        _v = pd.Series(np.full(N, np.nan), v.index[:N])
-
-    # fill little nan hole by interpolation
-    elif N_fill_limit is not None:
+        v = pd.Series(np.full(N, np.nan), v.index[:N])
+    elif fill_limit is not None:
+        # fill little nan hole by interpolation
         mask = v.isna()
         x = (
             mask.groupby((mask != mask.shift()).cumsum()).transform(
-                lambda x: len(x) > N_fill_limit
+                lambda x: len(x) > fill_limit
             )
             * mask
         )  # True in holes bigger than N_fill_limit
         if x.any():
             warnings.warn(
-                f"Hole(s) bigger than the tolerated length for interpolation {N_fill_limit}, replace spectrum by nan array",
+                f"Hole(s) bigger than the tolerated length for interpolation {fill_limit},"
+                + "replace spectrum by nan array",
                 UserWarning,
             )
-            _v = pd.Series(np.full(N, np.nan), v.index[:N])
-        else:
-            _v = v.interpolate(
-                method="quadratic"
-            )  # interpolate on hole smaller than N_fill_limit
-            _v = _v.iloc[:N]
-
+            v = pd.Series(np.full(N, np.nan), v.index[:N])
     else:
-        _v = v.iloc[:N]
+        # v = v.interpolate(
+        #    method="quadratic"
+        # )  # interpolate on hole smaller than N_fill_limit
+        v = v.fillna(0.0)
+    v = v.iloc[:N]
 
     if dt is None:
-        dt = _v.reset_index()["index"].diff().mean()
+        dt = v.reset_index()["time"].diff().mode()
+        if is_datetime(v.index):
+            dt = float(dt / pd.Timedelta("1d"))
 
-    if detrend and not method == "periodogram":
-        print("!!! Not implemented yet except for periodogram")
-    if method == "periodogram":
+    if method == "welch":
+        from scipy import signal
+
+        dkwargs = {
+            "window": "hann",
+            "return_onesided": False,
+            "detrend": detrend,
+            "scaling": "density",
+        }
+        assert "nperseg" in kwargs, "nperseg is required for method welch"
+        dkwargs.update(kwargs)
+        f, E = signal.welch(v, fs=1 / dt, axis=0, **dkwargs)
+    elif method == "periodogram":
         from scipy import signal
 
         dkwargs = {
@@ -504,22 +574,20 @@ def get_spectrum(
             "scaling": "density",
         }
         dkwargs.update(kwargs)
-        f, E = signal.periodogram(_v, fs=1 / dt, axis=0, **dkwargs)
-    elif method == "mtspec":
-        from mtspec import mtspec
-
-        lE, f = mtspec(
-            data=_v, delta=dt, time_bandwidth=4.0, number_of_tapers=6, quadratic=True
-        )
-    elif method == "mt":
-        import nitime.algorithms as tsa
-
-        dkwargs = {"NW": 2, "sides": "twosided", "adaptive": False, "jackknife": False}
-        dkwargs.update(kwargs)
-        lf, E, nu = tsa.multi_taper_psd(_v, Fs=1 / dt, **dkwargs)
-        f = fftfreq(len(lf)) * 24.0
-        # print('Number of tapers = %d' %(nu[0]/2))
-    return pd.Series(E, index=f)
+        f, E = signal.periodogram(v, fs=1 / dt, axis=0, **dkwargs)
+    # elif method == "mtspec":
+    #    from mtspec import mtspec
+    #    lE, f = mtspec(
+    #        data=v, delta=dt, time_bandwidth=4.0, number_of_tapers=6, quadratic=True
+    #    )
+    # elif method == "mt":
+    #    import nitime.algorithms as tsa
+    #    dkwargs = {"NW": 2, "sides": "twosided", "adaptive": False, "jackknife": False}
+    #    dkwargs.update(kwargs)
+    #    lf, E, nu = tsa.multi_taper_psd(v, Fs=1 / dt, **dkwargs)
+    #    f = fftfreq(len(lf)) * 24.0
+    #    # print('Number of tapers = %d' %(nu[0]/2))
+    return pd.Series(E, index=pd.Index(f, name="frequency")).sort_index()
 
 
 # -------------------------- tidal analysis ----------------------------------
@@ -627,7 +695,7 @@ def pytide_predict_tides(
     time = time.astype("datetime64")
     _time = [(pd.Timestamp(t) - pd.Timestamp(1970, 1, 1)).total_seconds() for t in time]
     f, vu = wt.compute_nodal_modulations(time)
-    v = (f * np.exp(1j * vu) * np.conj(har[:, None])).sum(axis=0)
+    v = (f * np.exp(1j * vu) * np.conj(har.values[:, None])).sum(axis=0)
     if cplx:
         return v
     return np.real(v)

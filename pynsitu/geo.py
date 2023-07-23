@@ -318,7 +318,7 @@ class GeoAccessor:
 
         if not inplace:
             return df
-        
+
     def compute_dt(
         self,
         time="index",
@@ -344,8 +344,7 @@ class GeoAccessor:
 
         if not inplace:
             return df
-        
-        
+
     def compute_accelerations(
         self,
         from_=(
@@ -707,13 +706,17 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
 
 def compute_accelerations(
     df,
-    from_,
-    names,
-    centered_velocity,
-    time,
-    keep_dt,
-    fill_startend,
-    inplace,
+    from_=(
+        "velocities",
+        "velocity_east",
+        "velocity_north",
+    ),
+    names=None,
+    centered_velocity=True,
+    time="index",
+    keep_dt=False,
+    fill_startend=True,
+    inplace=False,
 ):
     """compute acceleration from velocities or position
     Parameters
@@ -831,7 +834,7 @@ def compute_accelerations(
 
         df.loc[:, names[0]] = (dxdt.shift(-1) - dxdt) / dt_acc
         df.loc[:, names[1]] = (dydt.shift(-1) - dydt) / dt_acc
-    else :
+    else:
         assert False, "from_ should be 'lonlat', 'xy', 'velocities'"
     # update acceleration norm
     df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
@@ -863,7 +866,6 @@ def compute_velocities(
     keep_dt=False,
     inplace=False,
 ):
-
     """core method to compute velocity from a dataframe
     Parameters
     ----------
@@ -975,14 +977,13 @@ def compute_velocities(
     if not inplace:
         return df
 
-    
+
 def compute_dt(
     df,
     time,
     fill_startend=False,
     inplace=False,
 ):
-
     """core method to compute dt from a dataframe
     Parameters
     ----------
@@ -1028,7 +1029,6 @@ def compute_dt(
 
     if not inplace:
         return df
-
 
 
 # ----------------------------- xarray accessor --------------------------------

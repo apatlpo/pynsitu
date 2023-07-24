@@ -2,7 +2,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_datetime64_any_dtype as is_datetime
+from pandas.api.types import (
+    is_numeric_dtype,
+    is_datetime64_any_dtype,
+    is_timedelta64_dtype,
+)
 import xarray as xr
 
 from scipy import signal
@@ -25,20 +29,164 @@ try:
 except:
     print("Warning: could not import pyTMD")
 
-# ------------------------------ parameters ------------------------------------
+# ------------------------------ parameters / general utils ------------------------------------
 
 deg2rad = np.pi / 180.0
 cpd = 86400 / 2 / np.pi
 
+
+def timedelta2rule(dt, base_unit="1s"):
+    """compute a rule based a pd.Timedelta"""
+    return str(round(dt / pd.Timedelta(base_unit))) + base_unit[-1]
+
+
 # ----------------------------- pandas tseries extension -----------------------
 
 
-@pd.api.extensions.register_dataframe_accessor("ts")
-class TimeSeriesAccessor:
-    def __init__(self, pandas_obj):
-        self._time = self._validate(pandas_obj)
-        self._obj = pandas_obj
+class TimeSeries:
+    def __init__(self, obj):
+        self._time = self._validate(obj)
+        self._obj = obj
         self._reset_tseries()
+        self._update_time_dtype()
+
+    def _validate(self, obj):
+        pass
+
+    def _reset_tseries(self):
+        """reset all variables related to accessor"""
+        self._time_origin = None
+        self._dt = None
+        self._delta_time_unit = None
+        self._tidal_harmonics = None
+
+    def _update_time_dtype(self):
+        self.is_numeric = False
+        self.is_datetime = False
+        self.is_timedelta = False
+        if is_numeric_dtype(self.time.dtype):
+            self.dtype = "numeric"
+            self.is_numeric = True
+        elif is_datetime64_any_dtype(self.time.dtype):
+            self.dtype = "datetime"
+            self.is_datetime = True
+        elif is_timedelta64_dtype(self.time.dtype):
+            self.dtype = "timedelta"
+            self.is_timedelta = True
+        assert any(
+            [self.is_numeric, self.is_datetime, self.is_timedelta]
+        ), "time dtype not implemented: {self.time.dtype}"
+
+    @property
+    def time(self):
+        """return time as a series"""
+        if self._time_index:
+            return self._obj.index.to_series().rename(self._time)
+        elif self._time:
+            return self._obj[self._time]
+
+    @property
+    def dt(self):
+        """most likely time increment"""
+        if self._dt is None:
+            self._dt = np.median(self.get_dt())
+        if not self._is_timeline_uniform:
+            warnings.warn("dt set but time series is non-uniform")
+        return self._dt
+
+    @property
+    def _is_timeline_uniform(self):
+        return len(np.unique(self.get_dt())) == 1
+
+    @property
+    def time_origin(self):
+        """define a reference time if none is available"""
+        if self._time_origin is None:
+            # default value
+            if self.is_numeric:
+                self._time_origin = 0.0
+            elif self.is_datetime:
+                self._time_origin = pd.Timestamp("2010-01-01")
+            elif self.is_timedelta:
+                self._time_origin = pd.Timedelta("0")
+        return self._time_origin
+
+    @property
+    def delta_time_unit(self):
+        """define a reference time interval if none is available"""
+        if self._delta_time_unit is None:
+            # default value
+            if self.is_numeric:
+                self._delta_time_unit = 1
+            else:
+                self._delta_time_unit = pd.Timedelta("1s")
+        return self._delta_time_unit
+
+    def set_time_origin_delta(self, time_origin=None, delta_time_unit=None):
+        """set time reference variables
+
+        Parameters
+        ----------
+        time_origin: pd.Timestamp
+            Time origin used for the computation of physical time intervals
+        delta_time_unit: pd.Timedelta
+            Time unit interval used for the computation of physical time intervals
+        """
+        assert (
+            time_origin is not None or delta_time_unit is not None
+        ), "one of time_origin and delta_time_unit must be provided"
+        if time_origin is not None:
+            self._time_origin = time_origin
+        if delta_time_unit is not None:
+            self._delta_time_unit = delta_time_unit
+
+    ## signal processing
+    def _spectrum_common(
+        self,
+        method,
+        unit,
+        include,
+        ignore,
+        complex,
+        **kwargs,
+    ):
+        """common treatment of spectral inputs"""
+        # time line must be uniform
+        assert (
+            self._is_timeline_uniform
+        ), "spectrum for non-uniform time series is not implemented"
+        # time units used for frequency
+        if unit is not None:
+            assert not self.is_numeric, "unit cannot be specified if time is numeric"
+            if isinstance(unit, str):
+                unit = pd.Timedelta(unit)
+        else:
+            unit = self.delta_time_unit
+        dt = self.dt / unit
+        if isinstance(include, str):
+            include = [include]
+        if include is None:
+            include = self.variables
+        if ignore is not None:
+            include = [v for v in include if v not in ignore]
+        if complex:
+            assert (
+                len(include) == 2
+            ), "treatment of spectrum of complex variables requires include strictly contains two variables"
+        _kwargs = dict(**kwargs)
+        # compute the number of frequency points
+        if "nperseg" in kwargs:
+            N = kwargs["nperseg"]
+            if isinstance(N, str):
+                N = round(pd.Timedelta(N) / self.dt)
+            if "return_onesided" in kwargs and kwargs["return_onesided"]:
+                N = N // 2 + 1  # was int(N/2)+1
+            _kwargs["nperseg"] = N
+        return method, dt, unit, include, _kwargs
+
+
+@pd.api.extensions.register_dataframe_accessor("ts")
+class TimeSeriesAccessor(TimeSeries):
 
     # @staticmethod
     def _validate(self, obj):
@@ -49,10 +197,18 @@ class TimeSeriesAccessor:
         for c in list(obj.columns):
             if c.lower() in time_potential:
                 time = c
+                assert obj[
+                    time
+                ].is_monotonic_increasing, (
+                    "time should is not monotonically increasing, please sort first"
+                )
         # time is the index
         if obj.index.name in time_potential:
             time = obj.index.name
             self._time_index = True
+            assert (
+                obj.index.is_monotonic_increasing
+            ), "time should is not monotonically increasing, please sort first"
         else:
             self._time_index = False
         if not time:
@@ -65,12 +221,6 @@ class TimeSeriesAccessor:
         else:
             return time
 
-    def _reset_tseries(self):
-        """reset all variables related to accessor"""
-        self._time_ref = None
-        self._delta_time_ref = None
-        self._tidal_harmonics = None
-
     @property
     def time(self):
         """return time as a series"""
@@ -79,54 +229,51 @@ class TimeSeriesAccessor:
         elif self._time:
             return self._obj[self._time]
 
-    @property
-    def time_reference(self):
-        """define a reference time if none is available"""
-        if self._time_ref is None:
-            # default value
-            self._time_ref = pd.Timestamp("2010-01-01")
-        return self._time_ref
+    def get_dt(self):
+        """get time intervals as an array"""
+        # bfill required to fill first item
+        return self.time.diff().bfill()
 
-    @property
-    def delta_time_reference(self):
-        """define a reference time if none is available"""
-        if self._delta_time_ref is None:
-            # default value
-            self._delta_time_ref = pd.Timedelta("1s")
-        return self._delta_time_ref
+    def set_time_physical(self, inplace=True, overwrite=False):
+        """add physical time to object
 
-    def set_time_reference(self, time_ref=None, dt=None, reset=True):
-        """set time references"""
-        if reset:
-            self._reset_tseries()
-        self._time_ref = time_ref
-        self._delta_ref = time_ref
-
-    def time_physical(self, overwrite=True):
-        """add physical time to object"""
+        Parameters
+        ----------
+        inplace: boolean, optional
+            Add physical time as an additional column, returns the variable otherwise
+        overwrite: boolean, optional
+            Enable overwriting an existing physical time
+        """
         d = self._obj
-        if "timep" not in d.columns or overwrite:
-            d["timep"] = (self.time - self.time_reference) / self.delta_time_reference
+        time = (self.time - self.time_origin) / self.delta_time_unit
+        if inplace:
+            if overwrite or "timep" not in d.columns:
+                d["timep"] = time
+        else:
+            return time
 
-    def _check_uniform_timeline(self):
-        dt = self.time.diff() / pd.Timedelta(self.delta_time_reference)
-        # could use .unique instead
-        dt_min = dt.min()
-        dt_max = dt.max()
-        # print(f" min(dt)= {dt_min} max(dt)= {dt_max} ")
-        return dt_min == dt_max
+    @property
+    def variables(self):
+        return self._obj.columns
 
     # time series and/or campaign related material
     def trim(self, d):
-        """given a deployment item, trim data"""
-        if self._time_index:
-            time = self._obj.index
-        else:
-            time = self._obj[self._time]
-        df = self._obj.loc[(time >= d.start.time) & (time <= d.end.time)]
-        # copying is necessary to avoid warning:
-        # SettingWithCopyWarning: A value is trying to be set on a copy of a slice from a DataFrame.
-        df = df.copy()
+        """given a deployment item, trim data temporally
+
+        Parameters
+        ----------
+        d: pynsitu.events.Deployment
+        """
+        df = self._obj
+        if self.is_datetime:
+            if self._time_index:
+                time = df.index
+            else:
+                time = df[self._time]
+            df = df.loc[(time >= d.start.time) & (time <= d.end.time)]
+            # copying is necessary to avoid warning:
+            # SettingWithCopyWarning: A value is trying to be set on a copy of a slice from a DataFrame.
+            df = df.copy()
         return df
 
     # resampling
@@ -167,26 +314,59 @@ class TimeSeriesAccessor:
         df = df.shift(0.5, freq=freq).resample(freq)
         return df
 
-    # signal processing
-    def spectrum(self, unit="1T", limit=None, **kwargs):
+    ### signal processing
+
+    def spectrum(
+        self,
+        method="welch",
+        unit=None,
+        include=None,
+        ignore=None,
+        complex=False,
+        fill_limit=None,
+        **kwargs,
+    ):
+        """compute spectra from the timeseries
+
+        Parameters
+        ----------
+        method: str, optional
+            Spectral method, e.g. welch, ...
+        unit: str, pd.Timedelta, optional
+            time unit to use for frequencies (e.g. "1T", "1D")
+        include: str, list, optional
+            variables to compute the spectrum on
+        complex: boolean, optional
+            turn on the computation of complex timeseries, requires only two variables in `include`. The spectrum compute is that of df[v0] + 1j*df[v1] where include=[v0,v1]
+        fill_limit: int, optional
+            maximum number of points that can be interpolated
+        **kwargs: passed to the spectral method
+        """
+        method, dt, unit, include, kwargs = self._spectrum_common(
+            method,
+            unit,
+            include,
+            ignore,
+            complex,
+            **kwargs,
+        )
         df = self._obj
-        # check if data is on a regular timeline and resample if need be
-        if not self._time_index:
-            df = df.set_index(self._time)
-        dt = df.reset_index()[self._time].diff()
-        # if is_datetime(df[self._time]):
-        #    dt = dt/pd.Timedelta(time_unit)
-        if dt.nunique() > 1:
-            # need to resample data
-            dt = dt.mode()
-            rule = unit.replace("1", "{}".format(int(dt / pd.Timedelta("1T"))))
-            print("Timeseries is not regular in time. Resampling with rule " + rule)
-            df = df.resample(rule).interpolate(limit=limit)
-        #
+        # massage timeseries (deal with NaNs)
+        D = {}
+        if not complex:
+            for c in include:
+                D[c] = _pd_interpolate_NaN_or_do_nothing(
+                    df[c], self.dt, limit=fill_limit
+                )
+        else:
+            s = df[include[0]] + 1j * df[include[1]]
+            s = _pd_interpolate_NaN_or_do_nothing(s, self.dt, limit=fill_limit)
+            c = "_".join(include)
+            D[c] = s
+        # actually compute spectra
         E = {}
-        for c in df.columns:
-            # should test if of numeric type
-            E[c] = compute_spectrum(df[c], **kwargs)
+        for c, s in D.items():
+            E[c] = compute_spectrum_pd(s, method, dt, **kwargs)
         return pd.DataFrame(E)
 
     # tidal analysis
@@ -287,15 +467,34 @@ class TimeSeriesAccessor:
         self._tidal_harmonics = dfh
 
 
+def _pd_interpolate_NaN_or_do_nothing(s, dt, **kwargs):
+    """try interpolating a pandas.Series or do nothing
+
+    Parameters
+    ----------
+    s: pd.Series, pd.DataFrame
+        input time series
+    dt: str, pd.Timedelta
+        sampling rate of output timeseries
+    **kwargs: passed to pandas interpolate method
+    """
+    if isinstance(dt, pd.Timedelta):
+        dt = timedelta2rule(dt)
+    # deal with NaNs if any
+    if s.isnull().any():
+        try:
+            s = s.resample(dt).interpolate(**kwargs)
+        except:
+            # too many NaNs, let the spectral method return NaNs
+            pass
+    return s
+
+
 # ----------------------------- xarray accessor --------------------------------
 
 
 @xr.register_dataset_accessor("ts")
-class XrTimeSeriesAccessor:
-    def __init__(self, xarray_obj):
-        self._time = self._validate(xarray_obj)
-        self._obj = xarray_obj
-        self._reset_tseries()
+class XrTimeSeriesAccessor(TimeSeries):
 
     # @staticmethod
     def _validate(self, obj):
@@ -317,68 +516,125 @@ class XrTimeSeriesAccessor:
             ), "time/date variable and dimenion are not labelled identically, this is not supported at the moment"
             return time
 
-    def _reset_tseries(self):
-        """reset all variables related to accessor"""
-        self._time_ref = None
-        self._delta_time_ref = None
-        self._tidal_harmonics = None
-
     @property
     def time(self):
         """return time (may have a different name)"""
         return self._obj[self._time]
 
-    @property
-    def time_reference(self):
-        """define a reference time if none is available"""
-        if self._time_ref is None:
-            # default value
-            self._time_ref = pd.Timestamp("2010-01-01")
-        return self._time_ref
+    def get_dt(self):
+        """get time intervals as an array"""
+        return self.time.diff(self._time)
 
-    @property
-    def delta_time_reference(self):
-        """define a reference time if none is available"""
-        if self._delta_time_ref is None:
-            # default value
-            self._delta_time_ref = pd.Timedelta("1s")
-        return self._delta_time_ref
-
-    def set_time_reference(self, time_ref=None, dt=None, reset=True):
-        """set time references"""
-        if reset:
-            self._reset_tseries()
-        self._time_ref = time_ref
-        self._delta_ref = time_ref
-
-    def time_physical(self, overwrite=True):
+    def set_time_physical(self, overwrite=True):
         """add physical time to object"""
         ds = self._obj
         if "timep" not in ds.variables or overwrite:
-            ds["timep"] = (
-                ds[self._time] - self.time_reference
-            ) / self.delta_time_reference
+            ds["timep"] = (ds[self._time] - self.time_origin) / self.delta_time_unit
+
+    @property
+    def variables(self):
+        """list only time variables"""
+        ds = self._obj
+        return [v for v in list(ds) if self._time in ds[v].dims]
 
     # time series and/or campaign related material
     def trim(self, d, inplace=False):
-        """given a deployment item, trim data"""
-        ds = self._obj.sel({self._time: slice(d.start.time, d.end.time)})
+        """given a deployment item, trim data temporally
+
+        Parameters
+        ----------
+        d: pynsitu.events.Deployment
+        """
+        ds = self._obj
+        if self.is_datetime:
+            ds = ds.sel({self._time: slice(d.start.time, d.end.time)})
         if inplace:
             self._obj = ds
         else:
             return ds
 
-    # resample on regular time line
-    def resample(self, freq, inplace=False):
-        ds, t = self._obj, self._time
-        new_time = pd.date_range(ds[t].values[0], ds[t].values[-1], freq=freq)
-        dsi = ds.interp(**{t: new_time})
-        if inplace:
-            self._obj = dsi
-        else:
-            return dsi
+    ## signal processing
 
-    # signal processing ...
+    def spectrum(
+        self,
+        method="welch",
+        unit=None,
+        include=None,
+        ignore=None,
+        complex=False,
+        fill_limit=None,
+        **kwargs,
+    ):
+        """compute spectra from the timeseries
+
+        Parameters
+        ----------
+        method: str, optional
+            Spectral method, e.g. welch, ...
+        unit: str, pd.Timedelta, optional
+            time unit to use for frequencies (e.g. "1T", "1D")
+        include: str, list, optional
+            variables to compute the spectrum on
+        complex: boolean, optional
+            turn on the computation of complex timeseries, requires only two variables in `include`.
+            The spectrum compute is that of df[v0] + 1j*df[v1] where include=[v0,v1]
+        fill_limit: int, optional
+            maximum number of points that can be interpolated
+        **kwargs: passed to the spectral method
+        """
+        method, dt, unit, include, kwargs = self._spectrum_common(
+            method,
+            unit,
+            include,
+            ignore,
+            complex,
+            **kwargs,
+        )
+        ds = self._obj
+        # massage timeseries (deal with NaNs)
+        D = {}
+        if not complex:
+            for v in include:
+                D[v] = _xr_interpolate_NaN_or_do_nothing(
+                    ds[v], self.dt, self._time, limit=fill_limit
+                )
+        else:
+            da = ds[include[0]] + 1j * ds[include[1]]
+            da = _xr_interpolate_NaN_or_do_nothing(
+                da, self.dt, self._time, limit=fill_limit
+            )
+            c = "_".join(include)
+            D[c] = da
+        # actually compute spectra
+        E = []
+        for v, da in D.items():
+            E.append(
+                compute_spectrum_xr(da, method, dt, self._time, **kwargs).rename(v)
+            )
+        return xr.merge(E)
+
+
+def _xr_interpolate_NaN_or_do_nothing(da, dt, time, **kwargs):
+    """try interpolating a pandas.Series or do nothing
+
+    Parameters
+    ----------
+    s: pd.Series, pd.DataFrame
+        input time series
+    dt: str, pd.Timedelta
+        sampling rate of output timeseries
+    **kwargs: passed to pandas interpolate method
+    """
+    if isinstance(dt, pd.Timedelta):
+        dt = timedelta2rule(dt)
+    # deal with NaNs if any
+    if da.isnull().any():
+        try:
+            da = da.resample(dt).interpolate_na(dim=time, **kwargs)
+        except:
+            # too many NaNs, let the spectral method return NaNs
+            pass
+    return da
 
 
 # -------------------------- filtering ----------------------------------
@@ -466,115 +722,62 @@ def filter_response(h, dt=1 / 24):
 
 # -------------------------- spectral analysis ----------------------------------
 
-
-def compute_spectrum(
-    v,
-    N=None,
-    dt=None,
-    method="welch",
+# common kwargs for scipy welch, periodogram
+scipy_spectrum_kwargs = dict(
+    window="hann",
+    return_onesided=False,
     detrend=False,
-    fill_limit=24,
-    nan_ratio_limit=0.1,
+    scaling="density",
+)
+
+
+def compute_spectrum_pd(
+    v,
+    method,
+    dt,
     **kwargs,
 ):
-    """Compute the spectrum of a time series
+    """Compute the spectrum of a pandas time series
+    Treatment of NaNs is assumed to be carried out beforehand
 
     Parameters
     ----------
-        v: ndarray, pd.Series
+        da: ndarray, xr.DataArray
             Time series, the index must be time (and named as it) if dt is not provided
-        N: int
-            Length of the output
-        dt: float, optional
-            Time step
-        N_fill_limit : int
-            Limit length of Nan gap filled by interpolation
         method: string
             Method that will be employed for spectral calculations.
-            Default is 'welch',
-            Options: 'welch', 'periodogram'
-        detrend: str or function or False, optional
-            Turns detrending on or off. Default is False.
-        nan_ratio : float between 0 and 1
-            limit of nan value ratio tolerated in time series
-            default is 0.1
-    CAUTION : if v ndarray need to give dt
+            Implemented methods are 'welch', 'periodogram' (not tested)
+        dt: float
+            Time spacing
+        **kwargs: passed to the spectral calculation method
     See:
-        - https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.signal.periodogram.html
+        - https://docs.scipy.org/doc/scipy/reference/signal.html#spectral-analysis
         - https://krischer.github.io/mtspec/
         - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
     """
+    assert v is not None or "nperseg" in kwargs, "nperseg needs to be specified"
     if v is None:
-        v = pd.Series(np.random.randn(N))
-    else:
-        N = v.size
+        # dask distribution related constraints
+        v = pd.Series(np.random.randn(kwargs["nperseg"]))
 
+    # enables feeding np.arrays
     if not isinstance(v, pd.Series):
-        v = pd.Series(
-            v
-        )  # harmonising type (solving pb np.ndarray -> isnan(), pd.Series ->isna(), iloc pb)
+        v = pd.Series(v)
         v.index.rename("time", inplace=True)
 
-    nan_ratio = v.iloc[:N].isna().sum() / N >= nan_ratio_limit
-    if nan_ratio > nan_ratio_limit:
-        # fill all timeseries with nan if too many nan's
-        # Avoids computing spectra where a large part of value come from interpolation
-        warnings.warn(
-            f"Nan values ratio {round(100*nan_ratio)}% exceeds the {100*nan_ratio_limit}% tolerated limit, replace spectrum by nan array",
-            UserWarning,
-        )
-        v = pd.Series(np.full(N, np.nan), v.index[:N])
-    elif fill_limit is not None:
-        # fill little nan hole by interpolation
-        mask = v.isna()
-        x = (
-            mask.groupby((mask != mask.shift()).cumsum()).transform(
-                lambda x: len(x) > fill_limit
-            )
-            * mask
-        )  # True in holes bigger than N_fill_limit
-        if x.any():
-            warnings.warn(
-                f"Hole(s) bigger than the tolerated length for interpolation {fill_limit},"
-                + "replace spectrum by nan array",
-                UserWarning,
-            )
-            v = pd.Series(np.full(N, np.nan), v.index[:N])
-    else:
-        # v = v.interpolate(
-        #    method="quadratic"
-        # )  # interpolate on hole smaller than N_fill_limit
-        v = v.fillna(0.0)
-    v = v.iloc[:N]
+    assert is_numeric_dtype(type(dt)), f"dt must be of numeric type, found {type(dt)}"
 
-    if dt is None:
-        dt = v.reset_index()["time"].diff().mode()
-        if is_datetime(v.index):
-            dt = float(dt / pd.Timedelta("1d"))
+    if method in ["welch", "periodogram"]:
+        mkwargs = dict(**scipy_spectrum_kwargs)
+        mkwargs.update(fs=1 / dt, axis=0, method=getattr(signal, method))
+        mkwargs.update(**kwargs)
+        if method == "welch":
+            assert "nperseg" in kwargs, "nperseg is required for method welch"
+            if "alpha" not in mkwargs:
+                # required because alpha cannot be passed to periodogram
+                mkwargs["alpha"] = 0.5
 
-    if method == "welch":
-        from scipy import signal
-
-        dkwargs = {
-            "window": "hann",
-            "return_onesided": False,
-            "detrend": detrend,
-            "scaling": "density",
-        }
-        assert "nperseg" in kwargs, "nperseg is required for method welch"
-        dkwargs.update(kwargs)
-        f, E = signal.welch(v, fs=1 / dt, axis=0, **dkwargs)
-    elif method == "periodogram":
-        from scipy import signal
-
-        dkwargs = {
-            "window": "hann",
-            "return_onesided": False,
-            "detrend": detrend,
-            "scaling": "density",
-        }
-        dkwargs.update(kwargs)
-        f, E = signal.periodogram(v, fs=1 / dt, axis=0, **dkwargs)
+        f, E = _scipy_spectra_wrapper(v, **mkwargs)
     # elif method == "mtspec":
     #    from mtspec import mtspec
     #    lE, f = mtspec(
@@ -587,7 +790,148 @@ def compute_spectrum(
     #    lf, E, nu = tsa.multi_taper_psd(v, Fs=1 / dt, **dkwargs)
     #    f = fftfreq(len(lf)) * 24.0
     #    # print('Number of tapers = %d' %(nu[0]/2))
-    return pd.Series(E, index=pd.Index(f, name="frequency")).sort_index()
+
+    # place back in pd.Series along with frequency
+    E = pd.Series(E, index=pd.Index(f, name="frequency")).sort_index()
+
+    return E
+
+
+def compute_spectrum_xr(
+    da,
+    method,
+    dt,
+    time,
+    rechunk=False,
+    **kwargs,
+):
+    """Compute the spectrum of a pandas time series
+    Treatment of NaNs is assumed to be carried out beforehand
+
+    Parameters
+    ----------
+        da: ndarray, xr.DataArray
+            Time series, the index must be time (and named as it) if dt is not provided
+        method: string
+            Method that will be employed for spectral calculations.
+            Implemented methods are 'welch', 'periodogram' (not tested)
+        dt: float
+            Time spacing
+        time: str
+            Name of time dimension in xarray object
+        rechunk: boolean
+            Automatically rechunk along time dimension
+        **kwargs: passed to the spectral calculation method
+    See:
+        - https://docs.scipy.org/doc/scipy/reference/signal.html#spectral-analysis
+        - https://krischer.github.io/mtspec/
+        - http://nipy.org/nitime/examples/multi_taper_spectral_estimation.html
+    """
+
+    # enables feeding np.arrays
+    if not isinstance(da, xr.DataArray):
+        da = xr.DataArray(da).rename(dim_0="time")
+        warnings.warn("spectral calculation on np.array: make sure axis 0 is time")
+
+    assert is_numeric_dtype(type(dt)), f"dt must be of numeric type, found {type(dt)}"
+
+    # init apply_ufunc kwargs
+    aukwargs = dict(
+        output_dtypes=[da.dtype],
+        input_core_dims=[
+            [time],
+        ],
+        # input_core_dims=[[time], [time]], # for two input variables
+        output_core_dims=[["frequency"]],
+    )
+
+    # spectral calculation kwargs
+    mkwargs = dict(axis=-1, fs=1 / dt)
+    if method in ["welch", "periodgram"]:
+        if method == "welch":
+            assert "nperseg" in kwargs, "nperseg is required for method welch"
+        mkwargs.update(**scipy_spectrum_kwargs)
+    mkwargs.update(**kwargs)
+
+    # dask backend case
+    if da.chunks is not None:
+        # check number of time chunks
+        time_chunks_num = len(da.chunks[da.get_axis_num(time)])
+        assert (
+            time_chunks_num == 1 or rechunk
+        ), "number of chunks along the time dimension is not one, rechunk or set rechunk to True"
+        if time_chunks_num > 1 and rechunk:
+            da = da.chunk({time: -1})
+        aukwargs.update(
+            dask="parallelized",
+            dask_gufunc_kwargs={"output_sizes": {"frequency": kwargs["nperseg"]}},
+        )
+
+    if method in ["welch", "periodgram"]:
+        # _scipy_spectra_wrapper(da, )
+        if method == "welch":
+            assert "nperseg" in kwargs, "nperseg is required for method welch"
+            if "alpha" not in mkwargs:
+                # required because alpha cannot be passed to periodogram
+                mkwargs["alpha"] = 0.5
+        #
+        func = _scipy_spectra_wrapper
+        mkwargs["method"] = getattr(signal, method)
+        # run once to get frequency
+        _da = da.isel(**{d: 0 for d in da.dims if d != time}).values
+        f, _ = func(
+            _da,
+            **mkwargs,
+        )
+    # elif method == "mtspec":
+    #    from mtspec import mtspec
+    #    lE, f = mtspec(
+    #        data=v, delta=dt, time_bandwidth=4.0, number_of_tapers=6, quadratic=True
+    #    )
+    # elif method == "mt":
+    #    import nitime.algorithms as tsa
+    #    dkwargs = {"NW": 2, "sides": "twosided", "adaptive": False, "jackknife": False}
+    #    dkwargs.update(kwargs)
+    #    lf, E, nu = tsa.multi_taper_psd(v, Fs=1 / dt, **dkwargs)
+    #    f = fftfreq(len(lf)) * 24.0
+    #    # print('Number of tapers = %d' %(nu[0]/2))
+
+    # core calculation
+    mkwargs["ufunc"] = True
+    E = xr.apply_ufunc(
+        func,
+        da,
+        kwargs=mkwargs,
+        **aukwargs,
+    )
+    E = E.assign_coords(frequency=f).sortby("frequency")
+
+    # if real:
+    #    E = np.real(E).astype(np.float64)
+
+    return E
+
+
+def _scipy_spectra_wrapper(
+    x, method=None, fs=None, axis=-1, ufunc=False, alpha=None, **kwargs
+):
+    """wrapper around scipy spectral methods
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.periodogram.html#scipy.signal.periodogram
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.csd.html#scipy.signal.csd
+    """
+    assert method is not None, "method must be provided"
+    assert fs is not None, "fs must be provided"
+    #
+    dkwargs = dict(**kwargs)
+    if "alpha" is not None:
+        dkwargs["noverlap"] = round(alpha * kwargs["nperseg"])
+    f, E = method(x, fs=fs, axis=axis, **dkwargs)
+    #
+    if ufunc:
+        return E
+    else:
+        return f, E
 
 
 # -------------------------- tidal analysis ----------------------------------

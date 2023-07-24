@@ -84,9 +84,7 @@ def test_trim(kind, time_units):
         meta=_meta,
     )
 
-    s = generate_time_series(
-        label="time", uniform=True, kind=kind, time_units=time_units
-    )
+    s = generate_time_series(kind=kind, time_units=time_units)
     s.ts.trim(d)
 
 
@@ -102,6 +100,9 @@ def test_resample_centered():
     df.ts.resample_centered("2H")
 
 
+## spectral calculations
+
+# default calculation
 @pytest.mark.parametrize(
     "kind", ["pd_dataframe", "xr_dataset", "xr_dask"]
 )  # should add: pd_series, xr_dataarray
@@ -109,8 +110,16 @@ def test_resample_centered():
 def test_spectrum(kind, time_units):
     # spectrum(self, unit="1T", limit=None, **kwargs)
 
-    # date-like time
-    s = generate_time_series(
-        label="time", uniform=True, kind=kind, time_units=time_units
-    )
+    s = generate_time_series(kind=kind, time_units=time_units)
     E = s.ts.spectrum(nperseg=24 * 2)
+
+
+# rotary spectrum
+@pytest.mark.parametrize(
+    "kind", ["pd_dataframe", "xr_dataset", "xr_dask"]
+)  # should add: pd_series, xr_dataarray
+def test_spectrum(kind):
+    # spectrum(self, unit="1T", limit=None, **kwargs)
+
+    s = generate_time_series(kind=kind)
+    E = s.ts.spectrum(nperseg=24 * 2, complex=True)

@@ -17,7 +17,7 @@ from numba import njit, guvectorize, int32, float64, prange
 #################################################################################
 
 
-def despike_isolated(df, acceleration_threshold, verbose=True):
+def despike_isolated(df, acceleration_threshold, acc_key, verbose=True):
     """Drops isolated anomalous positions (spikes) in a position time series.
     Anomalous positions are first detected if acceleration exceed the provided
     threshold.
@@ -43,25 +43,25 @@ def despike_isolated(df, acceleration_threshold, verbose=True):
 
     """
 
-    assert "acceleration" in df.columns, (
+    assert acc_key[2] in df.columns, (
         "'acceleration' should be a column. You may need to leverage the "
         + "geo accessor first (pynsitu.geo.GeoAccessor) with "
         + "`df.geo.compute_velocities(acceleration=True)``"
     )
 
     # first pass: anomalous large acceleration values
-    spikes = df[df["acceleration"] > acceleration_threshold]
+    spikes = df[df[acc_key[2]] > acceleration_threshold]
 
     # second pass: seach for adequate sign reversals
     validated_single_spikes = []
     for t in spikes.index:
         C = []
         # check for a double sign reversal of acceleration
-        for _dir in ["east", "north"]:
+        for acc in acc_key[:1]:
             if t > df.index[0] and t < df.index[-1]:
-                am = df.loc[:t, "acceleration_" + _dir].iloc[-2]
-                a = spikes.loc[t, "acceleration_" + _dir]
-                ap = df.loc[t:, "acceleration_" + _dir].iloc[1]
+                am = df.loc[:t, acc].iloc[-2]
+                a = spikes.loc[t, acc]
+                ap = df.loc[t:, acc].iloc[1]
                 # check if am and ap have opposite sign to a
                 C.append(am * a < 0 and ap * a < 0)
         if len(C) > 0 and any(C):
@@ -112,6 +112,7 @@ def variational_smooth(
     position_error,
     acceleration_amplitude,
     acceleration_T,
+    acc_cut_key = ('ax','ay', 'Axy'),
     time_chunk=2,
     import_columns=["id"],
     geo=True,
@@ -146,6 +147,8 @@ def variational_smooth(
                     Acceleration typical amplitude
                 acceleration_T: float
                     Acceleration decorrelation timescale in seconds
+                acc_cut_key : (,,) of str, 
+                    ex : ('acceleration_east','acceleration_north', 'acceleration') or ('ax','ay', 'Axy') or ('au','av', 'Auv')
                 time_chunk: int/float, optional
                     Maximum time chunk (in days) to process at once.
                     Data is processed by chunks and patched together.
@@ -175,12 +178,12 @@ def variational_smooth(
     if geo:
         if "lon" not in df or "lat" not in df:
             assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
-    if "acceleration" not in df:
+    if acc_cut_key[2] not in df:
         assert False, "'acceleration' should be provided"
 
     # despike acceleration
     try:
-        df = despike_isolated(df, acc_cut)
+        df = despike_isolated(df, acc_cut, acc_cut_key)
     except:
         assert False, "pb despike"
 
@@ -1077,7 +1080,7 @@ def divide_blocs(df, t_target, maxgap):
     return DF, DF_target, DF_target_gap
 
 
-def gap(time, t_target):
+def gap_array(time, t_target):
     """Returns time distance between time in t_target and their nearest neightbor in time
 
     Parameters
@@ -1092,7 +1095,6 @@ def gap(time, t_target):
     d = np.abs(time.reshape(len(time), 1) - t_target.reshape(1, nt))
     i_closest = np.argmin(d, axis=0)
     t_closest = np.min(d, axis=0)
-
     return (t_target - time[i_closest]) / pd.Timedelta("1s")
 
 
@@ -1166,6 +1168,7 @@ def smooth(
                 "acceleration_amplitude",
                 "acceleration_T",
                 "time_chunk",
+                "acc_cut_key"
             ]
             assert np.all(
                 [p in param for p in parameters]
@@ -1234,7 +1237,7 @@ def smooth(
     dfo = pd.concat([dfo_, gap_mask], axis=1)
 
     # gap value : time distance to the nearest neightbors in seconds
-    dfo["gaps"] = gap(df.index.values, t_target.values)
+    dfo["gaps"] = gap_array(df.index.values, t_target.values)
 
     # update dt
 

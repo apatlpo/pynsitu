@@ -14,6 +14,8 @@ import numpy.testing as npt
 
 import pynsitu as pyn
 
+## -------------- method building used for testing
+
 # default timeseries
 tdefault = dict(start="01-01-2018", end="15-01-2018", freq="1H")
 
@@ -60,6 +62,9 @@ def generate_time_series(
         return ds
 
 
+## -------------- basic time series editing
+
+
 @pytest.mark.parametrize("label", ["time", "date"])
 def test_accessor_instantiation(label):
 
@@ -100,26 +105,18 @@ def test_resample_centered():
     df.ts.resample_centered("2H")
 
 
-## spectral calculations
+## -------------- spectral calculations
 
 # default calculation
-@pytest.mark.parametrize(
-    "kind", ["pd_dataframe", "xr_dataset", "xr_dask"]
-)  # should add: pd_series, xr_dataarray
+@pytest.mark.parametrize("kind", ["pd_dataframe", "xr_dataset", "xr_dask"])
 @pytest.mark.parametrize("time_units", ["datetime", "timedelta", "numeric"])
 def test_spectrum(kind, time_units):
-    # spectrum(self, unit="1T", limit=None, **kwargs)
-
     s = generate_time_series(kind=kind, time_units=time_units)
     E = s.ts.spectrum(nperseg=24 * 2)
 
 
 # rotary spectrum
-@pytest.mark.parametrize(
-    "kind", ["pd_dataframe", "xr_dataset", "xr_dask"]
-)  # should add: pd_series, xr_dataarray
-def test_spectrum(kind):
-    # spectrum(self, unit="1T", limit=None, **kwargs)
-
+@pytest.mark.parametrize("kind", ["pd_dataframe", "xr_dataset", "xr_dask"])
+def test_rotary_spectrum(kind):
     s = generate_time_series(kind=kind)
-    E = s.ts.spectrum(nperseg=24 * 2, complex=True)
+    E = s.ts.spectrum(nperseg=24 * 2, complex=("v0", "v1"))

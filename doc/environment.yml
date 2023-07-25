@@ -21,3 +21,4 @@ dependencies:
     - sphinx-copybutton
     - sphinxcontrib-srclinks
     - sphinx-panels
+    - myst-nb

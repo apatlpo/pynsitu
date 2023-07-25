@@ -169,10 +169,12 @@ class TimeSeries:
             include = self.variables
         if ignore is not None:
             include = [v for v in include if v not in ignore]
-        if complex:
-            assert (
-                len(include) == 2
-            ), "treatment of spectrum of complex variables requires include strictly contains two variables"
+        if complex is not None:
+            for v in complex:
+                assert (
+                    v in include
+                ), f"variable {v} is not in object and thus cannot be used for the rotary spectral calculation, please adjust complex input variable"
+            include = list(complex)
         _kwargs = dict(**kwargs)
         # compute the number of frequency points
         if "nperseg" in kwargs:
@@ -187,6 +189,7 @@ class TimeSeries:
 
 @pd.api.extensions.register_dataframe_accessor("ts")
 class TimeSeriesAccessor(TimeSeries):
+    """Pandas DataFrame accessor in order to edit and process timeseries-like data"""
 
     # @staticmethod
     def _validate(self, obj):
@@ -322,11 +325,11 @@ class TimeSeriesAccessor(TimeSeries):
         unit=None,
         include=None,
         ignore=None,
-        complex=False,
+        complex=None,
         fill_limit=None,
         **kwargs,
     ):
-        """compute spectra from the timeseries
+        """compute spectra of timeseries
 
         Parameters
         ----------
@@ -336,8 +339,10 @@ class TimeSeriesAccessor(TimeSeries):
             time unit to use for frequencies (e.g. "1T", "1D")
         include: str, list, optional
             variables to compute the spectrum on
-        complex: boolean, optional
-            turn on the computation of complex timeseries, requires only two variables in `include`. The spectrum compute is that of df[v0] + 1j*df[v1] where include=[v0,v1]
+        ignore: str, list, optional
+            list of variables to exclude from the spectral calculation
+        complex: tuple, optional
+            Specify varibles for the calculation of rotary spectral calculation, e.g. complex= (`v0`, `v1`) computes the spectrum of `v0 + 1j*v1`
         fill_limit: int, optional
             maximum number of points that can be interpolated
         **kwargs: passed to the spectral method
@@ -353,16 +358,12 @@ class TimeSeriesAccessor(TimeSeries):
         df = self._obj
         # massage timeseries (deal with NaNs)
         D = {}
-        if not complex:
-            for c in include:
-                D[c] = _pd_interpolate_NaN_or_do_nothing(
-                    df[c], self.dt, limit=fill_limit
-                )
-        else:
-            s = df[include[0]] + 1j * df[include[1]]
-            s = _pd_interpolate_NaN_or_do_nothing(s, self.dt, limit=fill_limit)
+        for c in include:
+            D[c] = _pd_interpolate_NaN_or_do_nothing(df[c], self.dt, limit=fill_limit)
+        if complex is not None:
+            s = D[include[0]] + 1j * D[include[1]]
             c = "_".join(include)
-            D[c] = s
+            D = {c: s}
         # actually compute spectra
         E = {}
         for c, s in D.items():
@@ -495,6 +496,7 @@ def _pd_interpolate_NaN_or_do_nothing(s, dt, **kwargs):
 
 @xr.register_dataset_accessor("ts")
 class XrTimeSeriesAccessor(TimeSeries):
+    """Xarray Dataset accessor in order to edit and process timeseries-like data"""
 
     # @staticmethod
     def _validate(self, obj):
@@ -561,11 +563,11 @@ class XrTimeSeriesAccessor(TimeSeries):
         unit=None,
         include=None,
         ignore=None,
-        complex=False,
+        complex=None,
         fill_limit=None,
         **kwargs,
     ):
-        """compute spectra from the timeseries
+        """compute spectra of timeseries
 
         Parameters
         ----------
@@ -575,9 +577,10 @@ class XrTimeSeriesAccessor(TimeSeries):
             time unit to use for frequencies (e.g. "1T", "1D")
         include: str, list, optional
             variables to compute the spectrum on
-        complex: boolean, optional
-            turn on the computation of complex timeseries, requires only two variables in `include`.
-            The spectrum compute is that of df[v0] + 1j*df[v1] where include=[v0,v1]
+        ignore: str, list, optional
+            list of variables to exclude from the spectral calculation
+        complex: tuple, optional
+            Specify varibles for the calculation of rotary spectral calculation, e.g. complex= (`v0`, `v1`) computes the spectrum of `v0 + 1j*v1`
         fill_limit: int, optional
             maximum number of points that can be interpolated
         **kwargs: passed to the spectral method
@@ -593,18 +596,14 @@ class XrTimeSeriesAccessor(TimeSeries):
         ds = self._obj
         # massage timeseries (deal with NaNs)
         D = {}
-        if not complex:
-            for v in include:
-                D[v] = _xr_interpolate_NaN_or_do_nothing(
-                    ds[v], self.dt, self._time, limit=fill_limit
-                )
-        else:
-            da = ds[include[0]] + 1j * ds[include[1]]
-            da = _xr_interpolate_NaN_or_do_nothing(
-                da, self.dt, self._time, limit=fill_limit
+        for v in include:
+            D[v] = _xr_interpolate_NaN_or_do_nothing(
+                ds[v], self.dt, self._time, limit=fill_limit
             )
+        if complex is not None:
+            da = D[include[0]] + 1j * D[include[1]]
             c = "_".join(include)
-            D[c] = da
+            D = {c: da}
         # actually compute spectra
         E = []
         for v, da in D.items():

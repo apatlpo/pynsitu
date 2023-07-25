@@ -31,7 +31,7 @@ except:
 
 @pd.api.extensions.register_dataframe_accessor("sw")
 class PdSeawaterAccessor:
-    """Augmented pandas DataFrame able to carry and process seawater properties"""
+    """Pandas DataFrame accessor in order to carry and process seawater properties"""
 
     def __init__(self, pandas_obj):
         """Instantiate the seawater accessor

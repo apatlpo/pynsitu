@@ -45,7 +45,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_panels",
     "numpydoc",
-    #"nbsphinx",
+    # "nbsphinx",
     "myst_nb",
     "IPython.sphinxext.ipython_console_highlighting",
 ]
@@ -53,7 +53,7 @@ extensions = [
 # apidoc_module_dir = '../xrft'
 # never execute notebooks: avoids lots of expensive imports on rtd
 # https://nbsphinx.readthedocs.io/en/0.2.14/never-execute.html
-#nbsphinx_execute = "never"
+# nbsphinx_execute = "never"
 nb_execution_mode = "off"
 
 # Add any paths that contain templates here, relative to this directory.

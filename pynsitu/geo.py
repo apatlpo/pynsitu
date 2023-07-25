@@ -130,23 +130,40 @@ lat_hover_formatter = CustomJSHover(
 """
 )
 
+# -----------------------------  geo extension, common part -------------------
+
+
+class GeoAccessor:
+    def __init__(self, _obj):
+        self._lon, self._lat = self._validate(_obj)
+        self._obj = _obj
+        self._reset_geo()
+
+    def _reset_geo(self):
+        """reset all variables related to geo"""
+        self._geo_proj_ref = None
+        self._geo_proj = None
+
+    def set_projection_reference(self, ref, reset=True):
+        """set projection reference point, (lon, lat) tuple"""
+        if reset:
+            self._reset_geo()
+        self._geo_proj_ref = ref
+
+    @property
+    def projection(self):
+        if self._geo_proj is None:
+            lonc, latc = self.projection_reference
+            self._geo_proj = projection(lonc, latc)
+        return self._geo_proj
+
 
 # ----------------------------- pandas geo extension --------------------------
 
 
-def _xy2lonlat(x, y, proj=None):
-    """compute longitude/latitude from projected coordinates"""
-    _inv_dir = pyproj.enums.TransformDirection.INVERSE
-    assert proj is not None, "proj must not be None"
-    return proj.transform(x, y, direction=_inv_dir)
-
-
 @pd.api.extensions.register_dataframe_accessor("geo")
-class GeoAccessor:
-    def __init__(self, pandas_obj):
-        self._lon, self._lat = self._validate(pandas_obj)
-        self._obj = pandas_obj
-        self._reset_geo()
+class PdGeoAccessor(GeoAccessor):
+    """Pandas DataFrame accessor in order to process geographical data"""
 
     # @staticmethod
     def _validate(self, obj):
@@ -169,12 +186,6 @@ class GeoAccessor:
         else:
             return lon, lat
 
-    def _reset_geo(self):
-        """reset all variables related to geo"""
-        self._geo_proj_ref = None
-        self._geo_proj = None
-        # self._obj.drop(columns=["x", "y"], errors="ignore", inplace=True)
-
     @property
     def projection_reference(self):
         """define a reference projection if none is available"""
@@ -187,19 +198,6 @@ class GeoAccessor:
             ), "lat, lon data do not contain any valid data"
             self._geo_proj_ref = (lon_ref, lat_ref)
         return self._geo_proj_ref
-
-    def set_projection_reference(self, ref, reset=True):
-        """set projection reference point, (lon, lat) tuple"""
-        if reset:
-            self._reset_geo()
-        self._geo_proj_ref = ref
-
-    @property
-    def projection(self):
-        if self._geo_proj is None:
-            lonc, latc = self.projection_reference
-            self._geo_proj = projection(lonc, latc)
-        return self._geo_proj
 
     def project(self, overwrite=True):
         """add (x,y) projection to object"""
@@ -218,7 +216,7 @@ class GeoAccessor:
         ), "x/y coordinates must be available"
         d[self._lon], d[self._lat] = self.projection.xy2lonlat(d["x"], d["y"])
 
-    # time series and/or campaign related material
+    ## --- time series and/or campaign related material
 
     def trim(self, d):
         """given a deployment item, trim data"""
@@ -271,6 +269,7 @@ class GeoAccessor:
         return self.apply_xy(_resample)
 
     ## --- velocity/acceleration
+
     def compute_velocities(
         self,
         time="index",
@@ -312,7 +311,7 @@ class GeoAccessor:
             names,
             centered,
             fill_startend,
-            distance=distance,
+            distance,
             keep_dt=keep_dt,
             inplace=inplace,
         )
@@ -713,10 +712,9 @@ def compute_accelerations(
     inplace : boolean
         if True add acceleration to dataset, if False return only a dataframe with time, id (for identification) and computed acceleration
     """
-    if from_[1] not in df.columns or from_[2] not in df.columns:
-        assert False, (
-            from_[1] + " and/or " + from_[2] + " not in the dataframe, check names"
-        )
+    assert from_[1] in df.columns and from_[2] in df.columns, (
+        from_[1] + " and/or " + from_[2] + " not in the dataframe, check names"
+    )
 
     if names is None:
         names = ("acceleration_east", "acceleration_north", "acceleration")
@@ -762,6 +760,11 @@ def compute_accelerations(
     # is_uniform = df["dt"].dropna().unique().size == 1
 
     # compute acc from velocities
+    assert from_[0] in [
+        "lonlat",
+        "xy",
+        "velocities",
+    ], "from_ should be 'lonlat', 'xy', 'velocities'"
     if from_[0] == "velocities":
         if centered_velocity:
             w = dt / (dt + dt.shift(-1))
@@ -832,7 +835,7 @@ def compute_velocities(
     names,
     centered,
     fill_startend,
-    distance="geoid",
+    distance,
     keep_dt=False,
     inplace=False,
 ):
@@ -856,20 +859,19 @@ def compute_velocities(
         Centers velocity calculation temporally
     fill_startend : boolean
         fill dataframe start and end (Nan values due to the derivation/centering method) (True by default)
-    distance: str, optional
-        Method to compute distances.
-        Default is geoid ("WGS84" with pyproj).
-        Uses projected fields otherwise ("x", "y")
+    distance: str
+        Method to compute distances:
+            - "geoid" is based geodetic distance and bearing ("WGS84" with pyproj)
+            - "spectral" is a spectral estimation (requires uniform time sampling)
+            - "xy" is from "x" and "y" columns (projected fields)
     keep_dt: boolean, optional
         Keeps time intervals (False by default).
     inplace : boolean, optional
         if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities.
     """
-
-    if lon_key not in df.columns or lat_key not in df.columns:
-        assert False, (
-            lon_key + " and/or " + lat_key + " not in the dataframe, check names"
-        )
+    assert lon_key in df.columns and lat_key in df.columns, (
+        lon_key + " and/or " + lat_key + " not in the dataframe, check names"
+    )
 
     if names is None:
         names = ("velocity_east", "velocity_north", "velocity")
@@ -898,6 +900,11 @@ def compute_velocities(
         df.loc[:, "dt"] = dt
     # is_uniform = df["dt"].dropna().unique().size == 1
 
+    assert distance in [
+        "geoid",
+        "spectral",
+        "xy",
+    ], "distance must be one of 'geoid', 'spectral', 'xy'"
     if distance == "geoid":
         from pyproj import Geod
 
@@ -910,7 +917,11 @@ def compute_velocities(
         # need to convert into dx and dy
         dxdt = pd.Series(dist * np.sin(az12 * deg2rad), index=df.index) / df["dt"]
         dydt = pd.Series(dist * np.cos(az12 * deg2rad), index=df.index) / df["dt"]
-    else:
+    elif distance == "spectral":
+        dxdt = spectral_diff(df["x"], df["dt"][1:])
+        dydt = spectral_diff(df["y"], df["dt"][1:])
+        # skips first dt which is in general NaN
+    elif distance == "xy":
         # leverage local projection, less accurate away from central point
         dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
         dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
@@ -949,15 +960,28 @@ def compute_velocities(
         return df
 
 
+def spectral_diff(x, dt, order=1):
+    """differentiate spectrally a presumably uniform pd.Series object"""
+    from scipy.fftpack import diff
+
+    dt1 = np.unique(dt)
+    assert len(dt1) == 1, "timeseries need to be uniform for spectral differentiation"
+    assert (
+        not x.isnull().any()
+    ), "position data must not contain NaNs for spectral differentation"
+    # make signal periodic
+    npad = x.size // 2
+    xp = np.pad(x, npad, mode="reflect")
+    dx = diff(xp, order=order, period=xp.size)[npad : npad + x.size] / dt1**order
+    return pd.Series(dx, index=x.index)
+
+
 # ----------------------------- xarray accessor --------------------------------
 
 
 @xr.register_dataset_accessor("geo")
-class XrGeoAccessor:
-    def __init__(self, xarray_obj):
-        self._lon, self._lat = self._validate(xarray_obj)
-        self._obj = xarray_obj
-        self._reset_geo()
+class XrGeoAccessor(GeoAccessor):
+    """Xarray Dataset accessor in order to process geographical data"""
 
     # @staticmethod
     def _validate(self, obj):
@@ -979,24 +1003,6 @@ class XrGeoAccessor:
             )
         else:
             return lon, lat
-
-    def _reset_geo(self):
-        """reset all variables related to geo"""
-        self._geo_proj_ref = None
-        self._geo_proj = None
-
-    def set_projection_reference(self, ref, reset=True):
-        """set projection reference point, (lon, lat) tuple"""
-        if reset:
-            self._reset_geo()
-        self._geo_proj_ref = ref
-
-    @property
-    def projection(self):
-        if self._geo_proj is None:
-            lonc, latc = self._geo_proj_ref
-            self._geo_proj = projection(lonc, latc)
-        return self._geo_proj
 
     def project(self, overwrite=True, **kwargs):
         """add (x,y) projection to object"""

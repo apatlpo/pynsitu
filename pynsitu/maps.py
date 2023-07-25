@@ -9,6 +9,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 try:
     import cmocean.cm as cm
 except:
+    cm = None
     print("Warning: could not import cmocean")
 
 try:

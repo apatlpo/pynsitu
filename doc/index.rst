@@ -1,4 +1,4 @@
-.. pynsitu documentation master file, created by
+.. pynsitu documentation master file, created
    from xrft doc on 29/10/2022
 
 
@@ -32,6 +32,7 @@ Documentation
    :caption: Examples
 
    example_events
+   example_tseries
    example_drifters
 
 .. toctree::
@@ -41,7 +42,5 @@ Documentation
    whats-new
    api
 
-
 .. _pandas: https://pandas.pydata.org
 .. _xarray: http://xarray.pydata.org
-.. _dask: http://dask.pydata.org/en/latest/array-api.html

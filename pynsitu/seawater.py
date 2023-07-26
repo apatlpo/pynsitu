@@ -26,16 +26,35 @@ except:
 # ------------------------------ parameters ------------------------------------
 
 
-# ----------------------------- pandas geo extension --------------------------
+# ----------------------------- seawater accessor - common --------------------------
+_t_potential = [
+    "temperature",
+    "temp",
+    "t",
+]
+_s_potential = [
+    "salinity",
+    "psal",
+    "s",
+]
+_c_potential = [
+    "conductivity",
+    "cond",
+    "c",
+]
+_p_potential = [
+    "pressure",
+    "p",
+]
+_d_potential = [
+    "depth",
+]
 
 
-@pd.api.extensions.register_dataframe_accessor("sw")
-class PdSeawaterAccessor:
-    """Pandas DataFrame accessor in order to carry and process seawater properties"""
-
-    def __init__(self, pandas_obj):
-        """Instantiate the seawater accessor
-        The DataFrame requires the following columns:
+class SeawaterAccessor:
+    def __init__(self, _obj):
+        """Seawater accessor
+        The data requires the following columns (pandas.dataframe) or variables (xarray.Dataset):
             - in situ temperature, accepted names: ["temperature", "temp", "t"]
             - practical salinity or conductivity, accepted names are:
                 ["salinity", "psal", "s"]
@@ -52,18 +71,39 @@ class PdSeawaterAccessor:
         Longitude and Latitude are treated differently and may be columns or
         attributes or in the `attrs` dictionnary
         """
-        try:
-            self._t, self._s, self._c, self._p = self._validate(pandas_obj)
-        except:
-            print(
-                "sw accessor inititation not successul, please set adequate column names manually"
-            )
-        self._obj = pandas_obj
+        self._t, self._s, self._c, self._p = self._validate(_obj)
+        self._obj = _obj
         self._update_SA_PT()
 
     def init(self):
         """simply instantiate accessor"""
         return
+
+
+# ----------------------------- seawater accessor - pandas --------------------------
+
+
+@pd.api.extensions.register_dataframe_accessor("sw")
+class PdSeawaterAccessor(SeawaterAccessor):
+    """Pandas DataFrame accessor in order to carry and process seawater properties
+
+    The DataFrame requires the following columns:
+        - in situ temperature, accepted names: ["temperature", "temp", "t"]
+        - practical salinity or conductivity, accepted names are:
+            ["salinity", "psal", "s"]
+            ["conductivity", "cond", "c"]
+        - pressure or depth, accepted names:
+            ["pressure", "p"]
+            ["depth"]
+    Accepted units ares:
+        - temperature: degC
+        - practical salinity: PSU
+        - conductivity: mS/cm
+        - pressure: dbar
+        - depth: m
+    Longitude and Latitude are treated differently and may be columns or
+    attributes or in the `attrs` dictionnary
+    """
 
     # @staticmethod
     def _validate(self, obj):
@@ -112,33 +152,28 @@ class PdSeawaterAccessor:
 
         # deal now with actual seawater properties
         t, s, c, p, d = None, None, None, None, None
-        t_potential = ["temperature", "temp", "t"]
-        s_potential = ["salinity", "psal", "s"]
-        c_potential = ["conductivity", "cond", "c"]
-        p_potential = ["pressure", "p"]
-        d_potential = ["depth"]
         for col in list(obj.columns):
-            if col.lower() in t_potential:
+            if col.lower() in _t_potential:
                 t = col
-            elif col.lower() in s_potential:
+            elif col.lower() in _s_potential:
                 s = col
-            elif col.lower() in c_potential:
+            elif col.lower() in _c_potential:
                 c = col
-            elif col.lower() in p_potential:
+            elif col.lower() in _p_potential:
                 p = col
-            elif col.lower() in d_potential:
+            elif col.lower() in _d_potential:
                 d = col
         if not t or (not s and not c) or (not p and not d):
             raise AttributeError(
                 "Did not find temperature, salinity and pressure columns. \n"
                 + "Case insentive options are: "
-                + "/".join(t_potential)
+                + "/".join(_t_potential)
                 + " , "
-                + "/".join(s_potential)
+                + "/".join(_s_potential)
                 + " , \n"
-                + "/".join(c_potential)
+                + "/".join(_c_potential)
                 + " , "
-                + "/".join(p_potential)
+                + "/".join(_p_potential)
             )
         else:
             # compute pressure from depth and depth from pressure if need be
@@ -407,7 +442,7 @@ def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
 
 
 @xr.register_dataset_accessor("sw")
-class XrSeawaterAccessor:
+class XrSeawaterAccessor(SeawaterAccessor):
     def __init__(self, xarray_obj):
         self._t, self._s, self._p, self._d = self._validate(xarray_obj)
         self._obj = xarray_obj
@@ -431,34 +466,26 @@ class XrSeawaterAccessor:
             raise AttributeError("Did not find an attribute latitude")
 
         t, s, p, d = None, None, None, None
-        t_potential = ["temperature", "temp", "t"]
-        s_potential = ["salinity", "psal", "s"]
-        p_potential = ["pressure", "press", "p"]
-        d_potential = [
-            "depth",
-        ]
         for c in list(obj.variables):
-            if c.lower() in t_potential:
+            if c.lower() in _t_potential:
                 t = c
-            elif c.lower() in s_potential:
+            elif c.lower() in _s_potential:
                 s = c
-            elif c.lower() in p_potential:
+            elif c.lower() in _p_potential:
                 p = c
-            elif c.lower() in d_potential:
+            elif c.lower() in _d_potential:
                 d = c
         if not t or not s or (not p and not d):
             raise AttributeError(
                 "Did not find temperature, salinity and pressure (or depth) columns. "
                 + "Case insentive options are: "
-                + "/".join(t_potential)
+                + "/".join(_t_potential)
                 + " , "
-                + "/".join(s_potential)
+                + "/".join(_s_potential)
                 + " , "
-                + "/".join(p_potential)
+                + "/".join(_p_potential)
                 + " , "
-                + "/".join(p_potential)
-                + " , "
-                + "/".join(d_potential)
+                + "/".join(_d_potential)
             )
         else:
             # compute pressure from depth and depth from pressure if need be

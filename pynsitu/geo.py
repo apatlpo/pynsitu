@@ -305,12 +305,12 @@ class PdGeoAccessor(GeoAccessor):
             self.project()
         df = compute_velocities(
             self._obj,
-            self._lon,
-            self._lat,
             time,
             names=names,
             centered=centered,
             fill_startend=fill_startend,
+            lon_key = self._lon,
+            lat_key = self._lat,
             distance=distance,
             keep_dt=keep_dt,
             inplace=inplace,
@@ -860,13 +860,13 @@ def compute_accelerations(
 
 def compute_velocities(
     df,
-    lon_key,
-    lat_key,
     time,
     names,
     centered,
     fill_startend,
     distance,
+    lon_key='lon',
+    lat_key='lat',
     keep_dt=False,
     inplace=False,
 ):
@@ -899,9 +899,9 @@ def compute_velocities(
     inplace : boolean, optional
         if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities.
     """
-    assert lon_key in df.columns and lat_key in df.columns, (
-        lon_key + " and/or " + lat_key + " not in the dataframe, check names"
-    )
+    if distance == 'geoid' : 
+        assert lon_key in df.columns and lat_key in df.columns, (
+            lon_key + " and/or " + lat_key + " not in the dataframe, check names")
 
     if names is None:
         names = ("velocity_east", "velocity_north", "velocity")
@@ -948,6 +948,7 @@ def compute_velocities(
         dxdt = pd.Series(dist * np.sin(az12 * deg2rad), index=df.index) / df["dt"]
         dydt = pd.Series(dist * np.cos(az12 * deg2rad), index=df.index) / df["dt"]
     elif distance == "spectral":
+        assert (df.dt[1:] == df.dt[1]).all(), 'time must be regularly sampled to apply spectral method'
         dxdt = spectral_diff(df["x"], df["dt"][1:], 1)
         dydt = spectral_diff(df["y"], df["dt"][1:], 1)
         # skips first dt which is in general NaN

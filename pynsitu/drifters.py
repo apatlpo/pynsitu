@@ -299,15 +299,12 @@ def variational_smooth(
         )
     else:
         compute_velocities(
-            df_out,
-            "x",
-            "y",
-            "index",
-            names=("u", "v", "uv"),
-            distance=None,
+            df_out, "index",
+            names = ("u", "v", "U"),
+            distance = 'xy',
             inplace=True,
             centered=True,
-            fill_startend=False,
+            fill_startend =False,
         )
 
     # recompute acceleration
@@ -809,8 +806,10 @@ def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
             np.sum(weights * x_nb * t**2),
         ]
     )
-    out = np.linalg.solve(A, b)
-    return out[0], out[1], out[2]
+    #out = np.linalg.solve(A, b)# pb of multiple solution or no solution https://stackoverflow.com/questions/13795682/numpy-error-singular-matrix
+    out = np.linalg.lstsq(A, b)
+    #return out[0], out[1], out[2]
+    return out[0][0], out[0][1], out[0][2]
 
 
 # @njit("UniTuple(float64[:], 2)(float64[:], float64[:], float64[:])")
@@ -932,7 +931,7 @@ def lowess_smooth(df, t_target, degree=2, import_columns=None, geo=False, acc=Fa
     # dataframe
     if degree == 2:
         df_out = pd.DataFrame(dict(x=x_out, y=y_out, u=u_out, v=v_out, time=t_target))
-    if degree == 3:
+    elif degree == 3:
         df_out = pd.DataFrame(
             dict(
                 x=x_out, y=y_out, u=u_out, v=v_out, ae=ax_out, an=ay_out, time=t_target
@@ -940,7 +939,7 @@ def lowess_smooth(df, t_target, degree=2, import_columns=None, geo=False, acc=Fa
         )
         df_out["aen"] = np.sqrt(df_out.ae**2 + df_out.an**2)
 
-    df_out["uv"] = np.sqrt(df_out.u**2 + df_out.v**2)
+    df_out["Auv"] = np.sqrt(df_out.u**2 + df_out.v**2)
 
     # import columns/info ex: id or time
     if import_columns:

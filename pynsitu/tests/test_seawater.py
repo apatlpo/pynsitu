@@ -10,13 +10,14 @@ import pynsitu as pyn
 
 
 @pytest.fixture()
-def sample_sw_dataframe():
+def sample_sw_data():
     """Sample dataframe containing seawater properties"""
-    return generate_sw_dataframe("col")
+    return generate_sw_data("col")
 
 
-def generate_sw_dataframe(lonlat):
-    """Create a dataframe containing seawater properties"""
+def generate_sw_data(lonlat, kind="pd_dataframe"):
+    """Create data containing seawater properties"""
+
     time = pd.date_range(start="2018-01-01", end="2018-01-15", freq="1H")
     time_scale = pd.Timedelta("10D")
     unit_oscillation = np.cos(2 * np.pi * ((time - time[0]) / time_scale))
@@ -31,8 +32,15 @@ def generate_sw_dataframe(lonlat):
     elif lonlat == "col":
         df.loc[:, "lon"] = -30 + 5 * unit_oscillation
         df.loc[:, "lat"] = 30 + 5 * unit_oscillation
-    # df = df.set_index("time")
-    return df
+    if kind == "pd_dataframe":
+        return df
+    elif kind == "xr_dataset":
+        ds = df.to_xarray().expand_dims(x=range(10))
+        return ds
+    elif kind == "xr_dask":
+        ds = df.to_xarray().expand_dims(x=range(10))
+        ds = ds.chunk(dict(x=2))
+        return ds
 
 
 # @pytest.mark.parametrize("s", ["salinity", "conductivity"])
@@ -40,12 +48,12 @@ def generate_sw_dataframe(lonlat):
 def test_sw_update_eos(lonlat):
     """test seawater dataframe update_eos method"""
 
-    df = generate_sw_dataframe(lonlat)
+    df = generate_sw_data(lonlat)
     # inplace modification
     df.sw.update_eos()
     assert "SA" in df.columns
 
-    df = generate_sw_dataframe(lonlat)
+    df = generate_sw_data(lonlat)
     # inplace modification
     df.sw.update_eos()
     assert "SA" in df.columns
@@ -55,14 +63,14 @@ def test_sw_update_eos(lonlat):
     assert "SA" in df_out.columns
 
 
-def test_sw_resample(sample_sw_dataframe):
+def test_sw_resample(sample_sw_data):
     """test seawater dataframe update_eos method, just run the code for now"""
     #
-    df = sample_sw_dataframe.copy().set_index("time")
+    df = sample_sw_data.copy().set_index("time")
     df.sw.resample("1D", interpolate=False, op="mean")
     #
-    df = sample_sw_dataframe.copy().set_index("time")
+    df = sample_sw_data.copy().set_index("time")
     df.sw.resample("1D", interpolate=True, op="median")
     #
-    df = sample_sw_dataframe.copy().set_index("time")
+    df = sample_sw_data.copy().set_index("time")
     df.sw.resample("1T", interpolate=True, op="mean")

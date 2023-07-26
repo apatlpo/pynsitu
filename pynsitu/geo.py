@@ -918,9 +918,10 @@ def compute_velocities(
         dxdt = pd.Series(dist * np.sin(az12 * deg2rad), index=df.index) / df["dt"]
         dydt = pd.Series(dist * np.cos(az12 * deg2rad), index=df.index) / df["dt"]
     elif distance == "spectral":
-        dxdt = spectral_diff(df["x"], df["dt"][1:])
-        dydt = spectral_diff(df["y"], df["dt"][1:])
+        dxdt = spectral_diff(df["x"], df["dt"][1:], 1)
+        dydt = spectral_diff(df["y"], df["dt"][1:], 1)
         # skips first dt which is in general NaN
+        centered = False
     elif distance == "xy":
         # leverage local projection, less accurate away from central point
         dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
@@ -960,19 +961,40 @@ def compute_velocities(
         return df
 
 
-def spectral_diff(x, dt, order=1):
-    """differentiate spectrally a presumably uniform pd.Series object"""
+def spectral_diff(x, dt, order, dx0=0.0):
+    """Differentiate (order=1, 2) or integrate (order=-1) spectrally a pd.Series presumed uniform
+
+    Parameters
+    ----------
+    x: pd.Series
+        time series to differentiate/integrate
+    dt: array-like
+        time intervals used to estimate the time step and verify timeline is uniform
+    order: int
+        order of differentiation: 1, 2, -1 (integration)
+    dx0: float
+        initial values for integrations (order=-1)
+    """
     from scipy.fftpack import diff
 
-    dt1 = np.unique(dt)
-    assert len(dt1) == 1, "timeseries need to be uniform for spectral differentiation"
+    _dt = np.unique(dt)
+    assert len(_dt) == 1, "timeseries need to be uniform for spectral differentiation"
     assert (
         not x.isnull().any()
     ), "position data must not contain NaNs for spectral differentation"
     # make signal periodic
     npad = x.size // 2
     xp = np.pad(x, npad, mode="reflect")
-    dx = diff(xp, order=order, period=xp.size)[npad : npad + x.size] / dt1**order
+    # apply diff
+    dx = diff(xp, order=order, period=xp.size) / _dt**order
+    # adjust output
+    if order == -1:
+        # trend needs to be added back to the integrated signal
+        dx += np.cumsum(dx * 0 + xp.mean()) * _dt
+    dx = dx[npad : npad + x.size]
+    if dx0 is not None and order == -1:
+        # initial value is adjusted
+        dx = dx - dx[0] + dx0
     return pd.Series(dx, index=x.index)
 
 

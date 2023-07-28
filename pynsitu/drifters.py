@@ -101,8 +101,91 @@ def nan_in_gap(df, df_gap, dtmax, inplace=False):
         df = df.where(test)
     if not inplace:
         return df.set_index("time")
-
-
+    
+########################################################
+# -----------COMPUTATION OF ACC (SAME FOR ALL)------------#
+def compute_acc(df_out, geo, spectral_diff):
+    if spectral_diff :
+        if geo:
+            df_out.geo.compute_accelerations(
+                from_=("xy_spectral", "x", "y"),
+                names=("ax", "ay", "Axy"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+            )
+            df_out.geo.compute_accelerations(
+                from_=("velocities_spectral", "u", "v"),
+                names=("au", "av", "Auv"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+            )
+            # should still recompute for non-geo datasets
+        else:
+            compute_accelerations(
+                df_out,
+                from_=("xy_spectral", "x", "y"),
+                names=("ax", "ay", "Axy"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=False,
+            )
+            compute_accelerations(
+                df_out,
+                from_=("velocities_spectral", "u", "v"),
+                names=("au", "av", "Auv"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=True,
+            )
+    else : 
+        if geo:
+            df_out.geo.compute_accelerations(
+                from_=("xy", "x", "y"),
+                names=("ax", "ay", "Axy"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+            )
+            df_out.geo.compute_accelerations(
+                from_=("velocities", "u", "v"),
+                names=("au", "av", "Auv"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+            )
+            # should still recompute for non-geo datasets
+        else:
+            compute_accelerations(
+                df_out,
+                from_=("xy", "x", "y"),
+                names=("ax", "ay", "Axy"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=False,
+            )
+            compute_accelerations(
+                df_out,
+                from_=("velocities", "u", "v"),
+                names=("au", "av", "Auv"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=True,
+            )
+            
 ###########################################
 # -----------VARIATIONNAL METHOD------------#
 def variational_smooth(
@@ -115,6 +198,7 @@ def variational_smooth(
     acc_cut_key = ('ax','ay', 'Axy'),
     time_chunk=2,
     import_columns=["id"],
+    spectral_diff = True,
     geo=True,
     acc=True,
 ):
@@ -289,65 +373,33 @@ def variational_smooth(
             # first reset reference from df
             df_out.geo.set_projection_reference(proj_ref)  # inplace
             df_out.geo.compute_lonlat()  # inplace
-
-    # compute velocity :
+    
+    # fill na 
+    df_out = df_out.bfill().ffill()
+    
+    # compute velocity with spectral differentiation:
     if geo:
         df_out.geo.compute_velocities(
             names=("u", "v", "uv"),
+            distance = 'spectral',
             inplace=True,
-            fill_startend=False,
+            fill_startend=True,
         )
     else:
         compute_velocities(
             df_out, "index",
             names = ("u", "v", "U"),
-            distance = 'xy',
+            distance = 'spectral',
             inplace=True,
             centered=True,
-            fill_startend =False,
+            fill_startend =True,
         )
 
-    # recompute acceleration
-    if acc:
-        if geo:
-            df_out.geo.compute_accelerations(
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            df_out.geo.compute_accelerations(
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            # should still recompute for non-geo datasets
-        else:
-            compute_accelerations(
-                df_out,
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
-            compute_accelerations(
-                df_out,
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
+    #compute acceleration
+    compute_acc(df_out, geo, spectral_diff)
+            
+    df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
+    df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
 
     # import columns/info ex: id or time
     if import_columns:
@@ -507,6 +559,7 @@ def spydell_smooth(
     acc_cut=1e-3,
     nb_pt_mean=5,
     import_columns=["id"],
+    spectral_diff = True,
     geo=True,
     acc=True,
 ):
@@ -623,7 +676,7 @@ def spydell_smooth(
 
     # Build full dataframe
     df_out = ds0.to_dataframe()
-
+    
     # import columns/info ex: id or time
     if import_columns:
         for column in import_columns:
@@ -636,48 +689,14 @@ def spydell_smooth(
         # first reset reference from df
         df_out.geo.set_projection_reference(proj_ref)  # inplace
         df_out.geo.compute_lonlat()  # inplace
-
-    # recompute acceleration
-    if acc:
-        if geo:
-            df_out.geo.compute_accelerations(
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            df_out.geo.compute_accelerations(
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            # should still recompute for non-geo datasets
-        else:
-            compute_accelerations(
-                df_out,
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
-            compute_accelerations(
-                df_out,
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
+    
+    # fill na 
+    df_out = df_out.bfill().ffill()
+    #compute acceleration
+    compute_acc(df_out, geo, spectral_diff)
+            
+    df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
+    df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
 
     return df_out
 
@@ -789,27 +808,34 @@ def solve_position_velocity(t_nb, x_nb, time_target):
 @njit
 def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
     # solve for x and u :  x + u*(t_nb-date_target) = x_nb
-    t = t_nb - time_target
     t_nbs = np.sort(t_nb)
     dt = t_nbs[-1] - t_nbs[0]
+    #t = t_nb - time_target
+    t = (t_nb - time_target)/dt
     weights = 70 / 81 * (1 - np.abs(t / dt) ** 3) ** 3 * I_func(t / dt)
     w = np.sum(weights)
     wt = np.sum(weights * t)
     wt2 = np.sum(weights * t**2)
     wt3 = np.sum(weights * t**3)
     wt4 = np.sum(weights * t**4)
-    A = np.array([[w, wt, wt2], [wt, wt2, wt3], [wt2, wt3, wt4]])  # coef gradients
+    A = np.array([[w, wt, wt2/2], [wt, wt2, wt3/2], [wt2, wt3, wt4/2]])  # coef gradients
     b = np.array(
         [
-            np.sum(weights * x_nb),
-            np.sum(weights * x_nb * t),
-            np.sum(weights * x_nb * t**2),
+            #np.sum(weights * x_nb),
+            #np.sum(weights * x_nb * t),
+            #np.sum(weights * x_nb * t**2),
+            np.sum(weights * (x_nb-x_nb[0]) ),
+            np.sum(weights * (x_nb-x_nb[0]) * t),
+            np.sum(weights * (x_nb-x_nb[0]) * t**2),
         ]
     )
     #out = np.linalg.solve(A, b)# pb of multiple solution or no solution https://stackoverflow.com/questions/13795682/numpy-error-singular-matrix
     out = np.linalg.lstsq(A, b)
     #return out[0], out[1], out[2]
-    return out[0][0], out[0][1], out[0][2]
+    #return out[0][0], out[0][1], out[0][2]
+    #return out[0][0] + x_nb[0], out[0][1], out[0][2]
+    return out[0][0] + x_nb[0], out[0][1]/dt, out[0][2]/dt**2
+
 
 
 # @njit("UniTuple(float64[:], 2)(float64[:], float64[:], float64[:])")
@@ -845,7 +871,11 @@ def lowess(time, x, time_target, degree=2):
     a_out = np.full(nt, np.nan)
 
     for i in prange(nt):
-        i_nb = np.arange(i_closest[i] - 2, i_closest[i] + 3)
+        if degree == 2: 
+            nb = 5
+        if degree == 3 :
+            nb = 15
+        i_nb = np.arange(i_closest[i] - nb//2, i_closest[i] + nb//2+1)
         a = [i < 0 or i > len(time) - 1 for i in i_nb]  # np.any not ok with numba
         if True in a:
             continue  # start-end edge stay nan values
@@ -878,7 +908,13 @@ def lowess(time, x, time_target, degree=2):
     return x_out, u_out, a_out
 
 
-def lowess_smooth(df, t_target, degree=2, import_columns=None, geo=False, acc=False):
+def lowess_smooth(df,
+                  t_target,
+                  degree=2,
+                  import_columns=None,
+                  spectral_diff =True,
+                  geo=False,
+                  acc=False):
     """perform a lowess interpolation
 
     Parameters
@@ -939,7 +975,7 @@ def lowess_smooth(df, t_target, degree=2, import_columns=None, geo=False, acc=Fa
         )
         df_out["aen"] = np.sqrt(df_out.ae**2 + df_out.an**2)
 
-    df_out["Auv"] = np.sqrt(df_out.u**2 + df_out.v**2)
+    df_out["U"] = np.sqrt(df_out.u**2 + df_out.v**2)
 
     # import columns/info ex: id or time
     if import_columns:
@@ -955,48 +991,15 @@ def lowess_smooth(df, t_target, degree=2, import_columns=None, geo=False, acc=Fa
         df_out.geo.compute_lonlat()  # inplace
 
     df_out = df_out.set_index("time")
-
-    # recompute acceleration
-    if acc:
-        if geo:
-            df_out.geo.compute_accelerations(
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            df_out.geo.compute_accelerations(
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-            )
-            # should still recompute for non-geo datasets
-        else:
-            compute_accelerations(
-                df_out,
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
-            compute_accelerations(
-                df_out,
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=False,
-                inplace=True,
-                keep_dt=False,
-            )
+    
+    # fill na 
+    df_out = df_out.bfill().ffill()
+    #compute acceleration
+    compute_acc(df_out, geo, spectral_diff)
+    
+    
+    df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
+    df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
     return df_out
 
 
@@ -1104,6 +1107,7 @@ def smooth(
     maxgap=4 * 86400,
     parameters=dict(),
     import_columns=["id"],
+    spectral_diff =True,
     geo=True,
     acc=True,
 ):
@@ -1178,6 +1182,7 @@ def smooth(
                 t_target_,
                 **parameters,
                 import_columns=import_columns,
+                spectral_diff =spectral_diff,
                 geo=geo,
                 acc=acc,
             )
@@ -1195,6 +1200,7 @@ def smooth(
                     t_target_,
                     **parameters,
                     import_columns=import_columns,
+                    spectral_diff =spectral_diff,
                     geo=geo,
                     acc=acc,
                 )
@@ -1212,6 +1218,7 @@ def smooth(
                     t_target_,
                     **parameters,
                     import_columns=import_columns,
+                    spectral_diff =spectral_diff,
                     geo=geo,
                     acc=acc,
                 )
@@ -1255,6 +1262,7 @@ def smooth_all(
     maxgap=4 * 86400,
     parameters=dict(),
     import_columns=["id"],
+    spectral_diff=True,
     geo=True,
     acc=True,
 ):
@@ -1285,9 +1293,9 @@ def smooth_all(
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
     dfa = df.groupby("id").apply(
-        smooth, method, t_target, maxgap, parameters, import_columns, geo, acc
+        smooth, method, t_target, maxgap, parameters, import_columns,spectral_diff,  geo, acc
     )
-    dfa = dfa.reset_index(level="id", drop=True)
+    dfa = dfa.reset_index(level="id", drop=True).reset_index().rename(columns={'index':'time'}).set_index('time')
     return dfa
 
 

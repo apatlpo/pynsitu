@@ -854,6 +854,7 @@ def compute_accelerations(
         
     else:
         assert False, "from_ should be 'lonlat', 'xy', 'velocities', 'xy_spectral', 'velocities_spectral'"
+    
     # update acceleration norm
     df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
 

@@ -200,7 +200,6 @@ def variational_smooth(
     import_columns=["id"],
     spectral_diff = True,
     geo=True,
-    acc=True,
 ):
     """Smooth and resample a drifter position time series
     The smoothing balances positions information according to the specified
@@ -236,12 +235,13 @@ def variational_smooth(
                 time_chunk: int/float, optional
                     Maximum time chunk (in days) to process at once.
                     Data is processed by chunks and patched together.
+                spectral_diff : boolean
+                    computing velocities and accelaration with spectral diff or not
                 import_columns : list of str
                     list of df constant columns we want to import (ex: id, platform)
                 geo: boolean,
                     optional if geo obj with projection
-                acc: boolean,
-                    optional compute acceleration
+ 
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, +import_columns with index time
 
     """
@@ -377,11 +377,14 @@ def variational_smooth(
     # fill na 
     df_out = df_out.bfill().ffill()
     
-    # compute velocity with spectral differentiation:
+    # compute velocity
+    if spectral_diff: dist = 'spectral'
+    else : dist='xy'
+
     if geo:
         df_out.geo.compute_velocities(
             names=("u", "v", "uv"),
-            distance = 'spectral',
+            distance = dist,
             inplace=True,
             fill_startend=True,
         )
@@ -389,7 +392,7 @@ def variational_smooth(
         compute_velocities(
             df_out, "index",
             names = ("u", "v", "U"),
-            distance = 'spectral',
+            distance = dist,
             inplace=True,
             centered=True,
             fill_startend =True,
@@ -561,13 +564,13 @@ def spydell_smooth(
     import_columns=["id"],
     spectral_diff = True,
     geo=True,
-    acc=True,
 ):
     """
     Smooth and interpolated a trajectory with the method described in Spydell et al. 2021.
+    
     Parameters:
     -----------
-            df :  dataframe with raw trajectory, must contain 'time', 'x', 'y', 'velocity_east', 'velocity_north'
+            df :  dataframe with raw trajectory, must contain 'time', 'x', 'y','u' and 'v'
             t_target: `pandas.core.indexes.datetimes.DatetimeIndex` or str
                 Output time series, as typically given by pd.date_range or the delta time of the output time series as str
                 In this case, t_target is then recomputed taking start-end the start end of the input trajectory and the given delta time
@@ -913,8 +916,7 @@ def lowess_smooth(df,
                   degree=2,
                   import_columns=None,
                   spectral_diff =True,
-                  geo=False,
-                  acc=False):
+                  geo=False,):
     """perform a lowess interpolation
 
     Parameters
@@ -928,8 +930,6 @@ def lowess_smooth(df,
         list of df constant columns we want to import (ex: id, platform)
     geo: boolean,
         optional if geo obj with projection
-    acc: boolean,
-        optional compute acceleration
     Return : dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, and ae-an computed via lowess if degree = 3,+norms, id, platform
     """
     # index = time
@@ -1109,7 +1109,6 @@ def smooth(
     import_columns=["id"],
     spectral_diff =True,
     geo=True,
-    acc=True,
 ):
     """
     Smooth and interpolated a trajectory
@@ -1184,7 +1183,6 @@ def smooth(
                 import_columns=import_columns,
                 spectral_diff =spectral_diff,
                 geo=geo,
-                acc=acc,
             )
             # except :
             # assert False, (df_, t_target_, len(df_), len(t_target_))
@@ -1202,7 +1200,6 @@ def smooth(
                     import_columns=import_columns,
                     spectral_diff =spectral_diff,
                     geo=geo,
-                    acc=acc,
                 )
             except:
                 assert False, (df_, t_target_, len(df_), len(t_target_))
@@ -1220,7 +1217,6 @@ def smooth(
                     import_columns=import_columns,
                     spectral_diff =spectral_diff,
                     geo=geo,
-                    acc=acc,
                 )
             except:
                 assert False, (df_, t_target_, len(df_), len(t_target_))
@@ -1264,7 +1260,7 @@ def smooth_all(
     import_columns=["id"],
     spectral_diff=True,
     geo=True,
-    acc=True,
+
 ):
     """
     Smooth and interpolated all trajectories
@@ -1293,7 +1289,7 @@ def smooth_all(
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
     dfa = df.groupby("id").apply(
-        smooth, method, t_target, maxgap, parameters, import_columns,spectral_diff,  geo, acc
+        smooth, method, t_target, maxgap, parameters, import_columns,spectral_diff,  geo
     )
     dfa = dfa.reset_index(level="id", drop=True).reset_index().rename(columns={'index':'time'}).set_index('time')
     return dfa

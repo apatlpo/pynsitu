@@ -1006,7 +1006,7 @@ def spectral_diff(x, dt, order, dx0=0.0, time=None):
         # initial value is adjusted
         dx = dx - dx[0] + dx0
     if order==1:
-        dx = dx + fit[1] + fit[0]*_t
+        dx = dx + fit[1] + 2*fit[0]*_t
     elif order==2:
         dx = dx + fit[0]
     return pd.Series(dx, index=x.index)

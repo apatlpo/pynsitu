@@ -593,7 +593,6 @@ def spydell_smooth(
             df = df.set_index("time")
         else:
             df = df.reset_index().set_index("time")
-    print(df.index.name)
 
     # assert x, y in dataframe
     if "x" not in df or "y" not in df:
@@ -618,7 +617,7 @@ def spydell_smooth(
     ds = ds.interp(time=t_target, method="linear")
 
     reg_dt = t_target[1] - t_target[0]
-    print(reg_dt)
+    
     # 4) integrate velocities and find constant
     # ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
     x_cum = ds.u.cumsum("time") * reg_dt / pd.Timedelta("1s")
@@ -1240,8 +1239,6 @@ def smooth(
 
     # gap value : time distance to the nearest neightbors in seconds
     dfo["gaps"] = gap_array(df.index.values, t_target.values)
-
-    # update dt
 
     # import columns/info ex: id or time
     if import_columns:

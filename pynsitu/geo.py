@@ -1075,6 +1075,8 @@ def spectral_diff(x, dt, order, dx0=0.0, time=None):
     time: np.array
         array of datetimes
     """
+    if time==None :
+        time=x.index.values
     from scipy.fftpack import diff
 
     # from scipy.signal import detrend

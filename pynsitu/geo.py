@@ -1006,7 +1006,6 @@ def compute_velocities(
     if not inplace:
         return df
 
-
 def compute_dt(
     df,
     time,
@@ -1059,7 +1058,8 @@ def compute_dt(
     if not inplace:
         return df
     
-def spectral_diff(x, dt, order, dx0=0.0):
+
+def spectral_diff(x, dt, order, dx0=0.0, time=None):
     """Differentiate (order=1, 2) or integrate (order=-1) spectrally a pd.Series presumed uniform
 
     Parameters
@@ -1072,15 +1072,26 @@ def spectral_diff(x, dt, order, dx0=0.0):
         order of differentiation: 1, 2, -1 (integration)
     dx0: float
         initial values for integrations (order=-1)
+    time: np.array
+        array of datetimes
     """
     from scipy.fftpack import diff
 
+    # from scipy.signal import detrend
     _dt = np.unique(dt)
     assert len(_dt) == 1, "timeseries need to be uniform for spectral differentiation"
     assert (
         not x.isnull().any()
     ), "position data must not contain NaNs for spectral differentation"
     # make signal periodic
+    if order > 0:
+        _t = (time - time[0]) / pd.Timedelta("1s")
+        fit = np.polyfit(_t, x, 2)
+        x = x - (fit[2] + fit[1] * _t + fit[0] * _t**2)
+    # detrend
+    # x_detrended = detrend(x)
+    # x_trend = x - x_detrended
+    # x = x_detrended
     npad = x.size // 2
     xp = np.pad(x, npad, mode="reflect")
     # apply diff
@@ -1093,6 +1104,10 @@ def spectral_diff(x, dt, order, dx0=0.0):
     if dx0 is not None and order == -1:
         # initial value is adjusted
         dx = dx - dx[0] + dx0
+    if order == 1:
+        dx = dx + fit[1] + 2 * fit[0] * _t
+    elif order == 2:
+        dx = dx + fit[0]
     return pd.Series(dx, index=x.index)
 
 

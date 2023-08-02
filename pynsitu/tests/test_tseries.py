@@ -114,12 +114,14 @@ def test_spectrum_welch(kind, time_units):
     s = generate_time_series(kind=kind, time_units=time_units)
     E = s.ts.spectrum(nperseg=24 * 2)
 
+
 # periodogram calculation
 @pytest.mark.parametrize("kind", ["pd_dataframe", "xr_dataset", "xr_dask"])
 @pytest.mark.parametrize("time_units", ["datetime", "timedelta", "numeric"])
 def test_spectrum_periodogram(kind, time_units):
     s = generate_time_series(kind=kind, time_units=time_units)
     E = s.ts.spectrum(method="periodogram")
+
 
 # rotary spectrum
 @pytest.mark.parametrize("kind", ["pd_dataframe", "xr_dataset", "xr_dask"])

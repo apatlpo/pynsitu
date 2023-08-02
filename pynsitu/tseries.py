@@ -98,7 +98,7 @@ class TimeSeries:
     def _is_timeline_uniform(self):
         dt = np.unique(self.get_dt())
         dt_median = np.median(dt)
-        return all( (dt-dt_median)/dt_median < 1e-6 )
+        return all((dt - dt_median) / dt_median < 1e-6)
 
     @property
     def time_origin(self):

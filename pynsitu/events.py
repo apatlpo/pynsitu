@@ -570,9 +570,9 @@ class Campaign(object):
         grid: boolean, optional
             Turn grid one (default is True)
         """
-
+        n = len(self.platforms)
         if ax is None:
-            fig = plt.figure(figsize=(15, 5))
+            fig = plt.figure(figsize=(15, n/4))
             ax = fig.add_subplot(111)
 
         y = 0

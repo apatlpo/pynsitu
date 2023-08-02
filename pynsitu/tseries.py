@@ -96,7 +96,9 @@ class TimeSeries:
 
     @property
     def _is_timeline_uniform(self):
-        return len(np.unique(self.get_dt())) == 1
+        dt = np.unique(self.get_dt())
+        dt_median = np.median(dt)
+        return all( (dt-dt_median)/dt_median < 1e-6 )
 
     @property
     def time_origin(self):
@@ -843,17 +845,9 @@ def compute_spectrum_xr(
         # input_core_dims=[[time], [time]], # for two input variables
         output_core_dims=[["frequency"]],
     )
-
-    # spectral calculation kwargs
-    mkwargs = dict(axis=-1, fs=1 / dt)
-    if method in ["welch", "periodgram"]:
-        if method == "welch":
-            assert "nperseg" in kwargs, "nperseg is required for method welch"
-        mkwargs.update(**scipy_spectrum_kwargs)
-    mkwargs.update(**kwargs)
-
     # dask backend case
-    if da.chunks is not None:
+    dask_backend = da.chunks is not None
+    if dask_backend:
         # check number of time chunks
         time_chunks_num = len(da.chunks[da.get_axis_num(time)])
         assert (
@@ -863,25 +857,19 @@ def compute_spectrum_xr(
             da = da.chunk({time: -1})
         aukwargs.update(
             dask="parallelized",
-            dask_gufunc_kwargs={"output_sizes": {"frequency": kwargs["nperseg"]}},
         )
 
-    if method in ["welch", "periodgram"]:
-        # _scipy_spectra_wrapper(da, )
+    # spectral calculation kwargs
+    mkwargs = dict(axis=-1, fs=1 / dt)
+    if method in ["welch", "periodogram"]:
+        mkwargs.update(**scipy_spectrum_kwargs)
         if method == "welch":
             assert "nperseg" in kwargs, "nperseg is required for method welch"
             if "alpha" not in mkwargs:
-                # required because alpha cannot be passed to periodogram
+                # necessary because alpha cannot be passed to periodogram
                 mkwargs["alpha"] = 0.5
-        #
-        func = _scipy_spectra_wrapper
         mkwargs["method"] = getattr(signal, method)
-        # run once to get frequency
-        _da = da.isel(**{d: 0 for d in da.dims if d != time}).values
-        f, _ = func(
-            _da,
-            **mkwargs,
-        )
+        func = _scipy_spectra_wrapper
     # elif method == "mtspec":
     #    from mtspec import mtspec
     #    lE, f = mtspec(
@@ -894,6 +882,17 @@ def compute_spectrum_xr(
     #    lf, E, nu = tsa.multi_taper_psd(v, Fs=1 / dt, **dkwargs)
     #    f = fftfreq(len(lf)) * 24.0
     #    # print('Number of tapers = %d' %(nu[0]/2))
+    # update kwargs
+    mkwargs.update(**kwargs)
+    # run once to get frequency
+    _da = da.isel(**{d: 0 for d in da.dims if d != time}).values
+    f, _ = func(
+        _da,
+        **mkwargs,
+    )
+    # update output size if dask backend
+    if dask_backend:
+        aukwargs.update(dask_gufunc_kwargs={"output_sizes": {"frequency": f.size}})
 
     # core calculation
     mkwargs["ufunc"] = True
@@ -923,7 +922,7 @@ def _scipy_spectra_wrapper(
     assert fs is not None, "fs must be provided"
     #
     dkwargs = dict(**kwargs)
-    if "alpha" is not None:
+    if alpha is not None:
         dkwargs["noverlap"] = round(alpha * kwargs["nperseg"])
     f, E = method(x, fs=fs, axis=axis, **dkwargs)
     #

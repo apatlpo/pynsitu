@@ -836,8 +836,8 @@ def compute_accelerations(
     # compute acc from positions in xy
     elif from_[0] == "xy":
         # leverage local projection, less accurate away from central point
-        dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
-        dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
+        dxdt = df[from_[1]].diff() / df["dt"]  # u_i = x_i - x_{i-1}
+        dydt = df[from_[2]].diff() / df["dt"]  # v_i = y_i - y_{i-1}
         dt_acc = (dt.shift(-1) + dt) * 0.5
         df.loc[:, names[0]] = (dxdt.shift(-1) - dxdt) / dt_acc
         df.loc[:, names[1]] = (dydt.shift(-1) - dydt) / dt_acc

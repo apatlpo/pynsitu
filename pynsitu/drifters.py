@@ -913,6 +913,7 @@ def lowess(time, x, time_target, degree=2):
 def lowess_smooth(df,
                   t_target,
                   degree=2,
+                  iteration =3,
                   import_columns=None,
                   spectral_diff =True,
                   geo=False,):
@@ -954,15 +955,23 @@ def lowess_smooth(df,
         t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
     # t_ target in seconds from first time
     date_target = (t_target - t_target[0]) / pd.Timedelta("1s")
-
+    
+    x_out = df.x.values
+    y_out = df.y.values
+    time = df.date.values
+    time_target = time
+    
     # apply lowess
-    x_out, u_out, ax_out = lowess(
-        df.date.values, df.x.values, date_target.values, degree=degree
-    )
-    y_out, v_out, ay_out = lowess(
-        df.date.values, df.y.values, date_target.values, degree=degree
-    )
+    for i in range(iteration):
+        if i==iteration-1 : time_target = date_target.values #final interpolation
+        x_out, u_out, ax_out = lowess(
+            time, x_out, time_target, degree=degree
+        )
+        y_out, v_out, ay_out = lowess(
+            time, y_out, time_target, degree=degree
+        )
 
+    
     # dataframe
     if degree == 2:
         df_out = pd.DataFrame(dict(x=x_out, y=y_out, u=u_out, v=v_out, time=t_target))
@@ -1187,7 +1196,7 @@ def smooth(
             # assert False, (df_, t_target_, len(df_), len(t_target_))
 
         elif method == "lowess":
-            param = ["degree"]
+            param = ["degree", 'iteration']
             assert np.all(
                 [p in param for p in parameters]
             ), f"parameters keys must be in {param}"

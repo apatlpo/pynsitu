@@ -247,8 +247,12 @@ def variational_smooth(
     """
     # store projection to align with dataframes produced
     if geo:
-        proj_ref = df.geo.projection_reference
-
+        if 'lonc' in df:
+            proj_ref = (df.lonc.values[0], df.latc.values[0])
+            import_columns += ['lonc', 'latc']
+        else :
+            proj_ref = df.geo.projection_reference
+            
     # index = time
     if df.index.name != "time":
         if df.index.name == None:
@@ -273,8 +277,8 @@ def variational_smooth(
 
     # select only x, y
     var = ["x", "y"] + import_columns
-    if geo:
-        var += ["lon", "lat"]
+    #if geo:
+    #    var += ["lon", "lat"]
     df = df[var]
 
     # t_target
@@ -288,6 +292,7 @@ def variational_smooth(
     T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
 
     if not time_chunk or T < time_chunk * 1.1:
+        print(df.columns)
         df_out = _variational_smooth_one(
             df,
             t_target,
@@ -308,8 +313,6 @@ def variational_smooth(
             df_chunk = df.loc[
                 (df.index > time[0] - delta) & (df.index < time[-1] + delta)
             ]
-            if geo:
-                df_chunk.geo.set_projection_reference(proj_ref)
             df_chunk_smooth = _variational_smooth_one(
                 df_chunk,
                 time,
@@ -367,12 +370,6 @@ def variational_smooth(
         # fix non float dtypes
         # for c in df_out.columns:
         #    df_out[c] = df_out[c].astype(df[c].dtype)
-
-        # update lon/lat
-        if geo:
-            # first reset reference from df
-            df_out.geo.set_projection_reference(proj_ref)  # inplace
-            df_out.geo.compute_lonlat()  # inplace
     
     # fill na 
     df_out = df_out.bfill().ffill()
@@ -382,6 +379,9 @@ def variational_smooth(
     else : dist='xy'
 
     if geo:
+        # initiate lon, lat (needed to compute_acc, even if it is computed from x, y)
+        df_out["lon"] = df.lonc.mean()
+        df_out["lat"] = df.latc.mean()
         df_out.geo.compute_velocities(
             names=("u", "v", "uv"),
             distance = dist,
@@ -400,7 +400,13 @@ def variational_smooth(
 
     #compute acceleration
     compute_acc(df_out, geo, spectral_diff)
-            
+    
+    # update lon/lat
+    if geo:
+        # first reset reference from df
+        df_out.geo.set_projection_reference(proj_ref)  # inplace
+        df_out.geo.compute_lonlat()  # inplace        
+        
     df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
     df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
 
@@ -426,6 +432,7 @@ def _variational_smooth_one(
     df_out = df.reindex(df.index.union(t_target), method="nearest").reindex(t_target)
     # providing "nearest" above is essential to preserve type (on int64 data typically)
     # override with interpolation for float data
+    
     col_float = [
         c for c in df.columns if np.issubdtype(df[c].dtype, float)
     ]  # could skip x/y: and c not in ["x", "y"]
@@ -447,12 +454,6 @@ def _variational_smooth_one(
     df_out["x"] = solve(L, I.T.dot(df["x"].values))
     # y
     df_out["y"] = solve(L, I.T.dot(df["y"].values))
-
-    # update lon/lat
-    if geo:
-        # first reset reference from df
-        df_out.geo.set_projection_reference(df.geo._geo_proj_ref)  # inplace
-        df_out.geo.compute_lonlat()  # inplace
 
     return df_out
 
@@ -599,11 +600,15 @@ def spydell_smooth(
         assert False, "positions must be labelled as 'x' and 'y'"
     if "u" not in df or "v" not in df:
         assert False, "velocities must be labelled as 'u' and 'v'"
-
+        
     # store projection to align with dataframes produced
     if geo:
-        proj_ref = df.geo.projection_reference
-
+        if 'lonc' in df:
+            proj_ref = (df.lonc.values[0], df.latc.values[0])
+            import_columns += ['lonc', 'latc']
+        else :
+            proj_ref = df.geo.projection_reference
+            
     # t_target
     if isinstance(t_target, str):
         t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
@@ -683,20 +688,23 @@ def spydell_smooth(
     if import_columns:
         for column in import_columns:
             df_out[column] = df[column][0]
-
+            
+    # fill na 
+    df_out = df_out.bfill().ffill()
+    
+    #compute acceleration
+    if geo : 
+        # initiate lon, lat (needed to compute_acc, even if it is computed from x, y)
+        df_out["lon"] = df.lonc.mean()
+        df_out["lat"] = df.latc.mean()
+    compute_acc(df_out, geo, spectral_diff)
+    
     # update lon/lat
     if geo:
-        df_out["lon"] = df.lon.mean()
-        df_out["lat"] = df.lat.mean()
         # first reset reference from df
         df_out.geo.set_projection_reference(proj_ref)  # inplace
         df_out.geo.compute_lonlat()  # inplace
-    
-    # fill na 
-    df_out = df_out.bfill().ffill()
-    #compute acceleration
-    compute_acc(df_out, geo, spectral_diff)
-            
+
     df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
     df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
 
@@ -945,7 +953,11 @@ def lowess_smooth(df,
 
     # store projection to align with dataframes produced
     if geo:
-        proj_ref = df.geo.projection_reference
+        if 'lonc' in df:
+            import_columns += ['lonc', 'latc']
+            proj_ref = (df.lonc.values[0], df.latc.values[0])
+        else :
+            proj_ref = df.geo.projection_reference
 
     # time in seconds from first time
     df["date"] = (df.index - df.index.min()) / pd.Timedelta("1s")
@@ -990,22 +1002,24 @@ def lowess_smooth(df,
         for column in import_columns:
             df_out[column] = df[column][0]
 
-    # update lon/lat
-    if geo:
-        df_out["lon"] = df.lon.mean()
-        df_out["lat"] = df.lat.mean()
-        # first reset reference from df
-        df_out.geo.set_projection_reference(proj_ref)  # inplace
-        df_out.geo.compute_lonlat()  # inplace
-
     df_out = df_out.set_index("time")
     
     # fill na 
     df_out = df_out.bfill().ffill()
+    
     #compute acceleration
+    if geo : 
+        # initiate lon, lat (needed to compute_acc, even if it is computed from x, y)
+        df_out["lon"] = df.lonc.mean()
+        df_out["lat"] = df.latc.mean()
     compute_acc(df_out, geo, spectral_diff)
     
-    
+    # update lon/lat
+    if geo:
+        # first reset reference from df
+        df_out.geo.set_projection_reference(proj_ref)  # inplace
+        df_out.geo.compute_lonlat()  # inplace
+        
     df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
     df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
     return df_out
@@ -1248,6 +1262,7 @@ def smooth(
 
     # gap value : time distance to the nearest neightbors in seconds
     dfo["gaps"] = gap_array(df.index.values, t_target.values)
+    
 
     # import columns/info ex: id or time
     if import_columns:

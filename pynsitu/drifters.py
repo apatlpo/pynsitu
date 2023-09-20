@@ -1022,8 +1022,73 @@ def lowess_smooth(df,
         
     df_out['X'] = np.sqrt(df_out['x']**2 + df_out['y']**2)
     df_out['U'] = np.sqrt(df_out['u']**2 + df_out['v']**2)
+    
     return df_out
 
+
+###########################################
+# -----------LOWPASS------------#
+def low_pass(df, T = 20, cutoff = 4, import_columns=["id"]):
+    from scipy.signal import filtfilt
+    from scipy.integrate import cumulative_trapezoid
+    from scipy.optimize import minimize
+    
+    # coefficients
+    dt = df.dt.mean()/3600/24 #in days
+    from pynsitu.tseries import generate_filter
+    taps = generate_filter(band='low',dt=dt, T=T, bandwidth=cutoff)
+    dff = df[['u', 'v']]
+    # apply filter
+    dff['u'] = filtfilt(taps,1, df.u.values)
+    dff['v'] = filtfilt(taps,1, df.v.values)
+    
+    #recompute position
+    # ms_x, ms_y = (df.x**2).mean(), (df.y**2).mean()
+    x_cum = cumulative_trapezoid(dff.u,  dx = df.dt.mean(), initial= 0)
+    y_cum = cumulative_trapezoid(dff.v,  dx = df.dt.mean(), initial= 0)
+
+    def msx_difference(x_0):
+        return ((df.x - x_0 - x_cum) ** 2).mean()
+
+    def msy_difference(y_0):
+        return ((df.y - y_0 - y_cum) ** 2).mean()
+
+    x_0 = minimize(msx_difference, df.x[0]).x
+    y_0 = minimize(msy_difference, df.y[0]).x
+
+    dff["x"] = x_0 + x_cum
+    dff["y"] = y_0 + y_cum
+    
+    #recompute acceleration
+    compute_accelerations(
+                dff,
+                from_=("xy", "x", "y"),
+                names=("ax", "ay", "Axy"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=False,
+            )
+    compute_accelerations(
+                dff,
+                from_=("velocities", "u", "v"),
+                names=("au", "av", "Auv"),
+                centered_velocity=True,
+                time="index",
+                fill_startend=True,
+                inplace=True,
+                keep_dt=True,
+            )
+    
+    # import columns/info ex: id or time
+    if import_columns:
+        for column in import_columns:
+            dff[column] = df[column][0]
+            
+    dff['X']=np.sqrt(dff['x']**2+dff['y']**2)
+    dff['U']=np.sqrt(dff['u']**2+dff['v']**2)
+    return dff
 
 ###########################################
 # -----------APPLY INTERPOLATIONS METHODS------------#

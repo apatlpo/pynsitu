@@ -572,7 +572,7 @@ class Campaign(object):
         """
         n = len(self.platforms)
         if ax is None:
-            fig = plt.figure(figsize=(15, n/4))
+            fig = plt.figure(figsize=(15, n / 4))
             ax = fig.add_subplot(111)
 
         y = 0

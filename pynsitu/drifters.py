@@ -285,7 +285,7 @@ def variational_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
     else:
         # enforce t_target type
         t_target = pd.DatetimeIndex(t_target)
@@ -616,7 +616,7 @@ def spydell_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
 
     # xarray for easy interpolation
     ds = df.to_xarray()[["x", "y", "u", "v"]]
@@ -982,7 +982,7 @@ def lowess_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
     # t_ target in seconds from first time
     date_target = (t_target - t_target[0]) / pd.Timedelta("1s")
 
@@ -1338,7 +1338,7 @@ def smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil('30min'), df.index.max(), freq=t_target) # add ceil so all drifters in smooth_all are on the same time grid
     else:
         # enforce t_target type
         t_target = pd.DatetimeIndex(t_target)
@@ -1471,6 +1471,7 @@ def smooth_all(
                 optional compute acceleration
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
+        
     dfa = df.groupby("id").apply(
         smooth, method, t_target, maxgap, parameters, import_columns, spectral_diff, geo
     )
@@ -1481,6 +1482,20 @@ def smooth_all(
         .set_index("time")
     )
     return dfa
+
+
+param_lowess = dict(degree=2, iteration=3, T_low_pass = 20, cutoff_low_pass = 13)
+def optimize_smooth_all(df, t_target):
+    return smooth_all(df,
+                      method='lowess',
+                      t_target=t_target, 
+                      maxgap=4 * 86400,
+                      parameters = param_lowess,
+                      import_columns=["id", 'platform'],
+                      spectral_diff=False,
+                      geo=True)
+                      
+                      
 
 
 #################################################################################

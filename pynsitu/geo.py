@@ -53,7 +53,7 @@ def dfdy(lat, units="1/s/m"):
     return df
 
 
-# ----------------------------- projections  -----------------------------------
+# ----------------------------- projections, distances  -----------------------
 
 
 class projection(object):
@@ -77,6 +77,17 @@ class projection(object):
         _inv_dir = pyproj.enums.TransformDirection.INVERSE
         return self.proj.transform(x, y, direction=_inv_dir)
 
+def azimuth_distance(lon0, lat0, lon1, lat1, ellps="WGS84"):
+    """compute azimuths and distances between two points
+    
+    Returns
+    -------
+    az12,az21,dist
+
+    """
+    g = pyproj.Geod(ellps=ellps)
+    #az12,az21,dist
+    return g.inv(lon0, lat0, lon1, lat1)
 
 # ----------------------------- lon/lat formatters  ----------------------------
 
@@ -151,6 +162,19 @@ class GeoAccessor:
         self._geo_proj_ref = ref
 
     @property
+    def projection_reference(self):
+        """define a reference projection if none is available"""
+        if self._geo_proj_ref is None:
+            # return the geographic center point
+            lat, lon = self._obj[self._lat], self._obj[self._lon]
+            lon_ref, lat_ref = lon.median(), lat.median()
+            assert not np.isnan(lat_ref) and not np.isnan(
+                lon_ref
+            ), "lat, lon data do not contain any valid data"
+            self._geo_proj_ref = (lon_ref, lat_ref)
+        return self._geo_proj_ref
+
+    @property
     def projection(self):
         if self._geo_proj is None:
             lonc, latc = self.projection_reference
@@ -185,19 +209,6 @@ class PdGeoAccessor(GeoAccessor):
             )
         else:
             return lon, lat
-
-    @property
-    def projection_reference(self):
-        """define a reference projection if none is available"""
-        if self._geo_proj_ref is None:
-            # return the geographic center point of this DataFrame
-            lat, lon = self._obj[self._lat], self._obj[self._lon]
-            lon_ref, lat_ref = lon.median(), lat.median()
-            assert not np.isnan(lat_ref) and not np.isnan(
-                lon_ref
-            ), "lat, lon data do not contain any valid data"
-            self._geo_proj_ref = (lon_ref, lat_ref)
-        return self._geo_proj_ref
 
     def project(self, overwrite=True):
         """add (x,y) projection to object"""

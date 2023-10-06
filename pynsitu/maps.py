@@ -94,19 +94,25 @@ def plot_map(
         fig = plt.figure(figsize=figsize)
     proj, extent = get_projection(extent)
     if tile is not None:
+        tile_cache="/tmp/cartopy_cache"
         import cartopy.io.img_tiles as cimgt
-
         if isinstance(tile, tuple):
             tile_level = tile[1]
+            if len(tile)>2:
+                # trick to refresh tile cache
+                tile_cache=None
             tile = tile[0]
+        elif isinstance(tile, int):
+            tile_level = tile
+            tile = "terrain"
         else:
+            tile_level = 11
             tile = "terrain"  # 'terrain-background'
             # https://wiki.openstreetmap.org/wiki/Zoom_levels
             # https://leaflet-extras.github.io/leaflet-providers/preview/
-            tile_level = 11
-        stamen_terrain = cimgt.Stamen(tile, cache="/tmp/cartopy_cache")
+        stamen = cimgt.Stamen(tile, cache=tile_cache)
         # about caching: https://github.com/SciTools/cartopy/pull/1533
-        projection = stamen_terrain.crs
+        projection = stamen.crs
 
     if projection is not None:
         proj = projection
@@ -119,7 +125,7 @@ def plot_map(
     if tile is not None:
         if isinstance(tile, int):
             tile_level = tile
-        ax.add_image(stamen_terrain, tile_level)
+        ax.add_image(stamen, tile_level)
 
     # copy kwargs for update
     kwargs = kwargs.copy()
@@ -345,7 +351,6 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
             return None
         ds = xr.open_dataset(_bathy_etopo1)
         # ds = ds.rename({'x': 'lon', 'y': 'lat', 'z': 'elevation'})
-        ds = ds.rename({"z": "elevation"})
         if bounds is None and steps is None:
             steps = (4, 4)
     else:
@@ -353,8 +358,10 @@ def load_bathy(bathy, bounds=None, steps=None, land=False):
             return None
         ds = xr.open_dataset(bathy)
 
-    if "depth" not in ds and "elevation" in ds:
-        ds["depth"] = -ds.elevation
+    if "depth" not in ds:
+        for v in ["elevation", "z"]:
+            if v in ds:
+                ds["depth"] = -ds[v]
 
     # mask land
     if not land:

@@ -190,19 +190,24 @@ class PdSeawaterAccessor(SeawaterAccessor):
                 )
             return t, s, c, p
 
-    def reset(self, extra=[]): #, inplace=True):
-        """ delete core seawater variables for update """
-        #if inplace:
+    def reset(self, extra=[]):  # , inplace=True):
+        """delete core seawater variables for update"""
+        # if inplace:
         df = self._obj.copy()
-        #else:
+        # else:
         #    df = self._obj.copy()
         df.drop(
-            columns=["SA", "CT", "sigma0",]+extra, 
+            columns=[
+                "SA",
+                "CT",
+                "sigma0",
+            ]
+            + extra,
             errors="ignore",
             inplace=True,
         )
         # recompute SA, PT & co
-        #self._update_SA_PT()
+        # self._update_SA_PT()
         df.sw.init()
         return df
 
@@ -221,7 +226,7 @@ class PdSeawaterAccessor(SeawaterAccessor):
             df.loc[:, "SA"] = gsw.SA_from_SP(s, p, lon, lat)
         if "CT" not in df.columns:
             df.loc[:, "CT"] = gsw.CT_from_t(df["SA"], t, p)
-        if "sigma0" not in df.columns :
+        if "sigma0" not in df.columns:
             df.loc[:, "sigma0"] = gsw.sigma0(df["SA"], df["CT"])
 
     def set_columns(self, **kwargs):
@@ -459,7 +464,6 @@ def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
 
 @xr.register_dataset_accessor("sw")
 class XrSeawaterAccessor(SeawaterAccessor):
-
     def _validate(self, obj):
         """verify all necessary information is here"""
 

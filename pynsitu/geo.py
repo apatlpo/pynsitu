@@ -77,17 +77,19 @@ class projection(object):
         _inv_dir = pyproj.enums.TransformDirection.INVERSE
         return self.proj.transform(x, y, direction=_inv_dir)
 
+
 def azimuth_distance(lon0, lat0, lon1, lat1, ellps="WGS84"):
     """compute azimuths and distances between two points
-    
+
     Returns
     -------
     az12,az21,dist
 
     """
     g = pyproj.Geod(ellps=ellps)
-    #az12,az21,dist
+    # az12,az21,dist
     return g.inv(lon0, lat0, lon1, lat1)
+
 
 # ----------------------------- lon/lat formatters  ----------------------------
 

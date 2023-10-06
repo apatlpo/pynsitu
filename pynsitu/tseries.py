@@ -420,7 +420,12 @@ class TimeSeriesAccessor(TimeSeries):
         scalar = True
         if isinstance(col, list):
             scalar = False
-            df = self._obj.reset_index()[[self._time,]+col].dropna()
+            df = self._obj.reset_index()[
+                [
+                    self._time,
+                ]
+                + col
+            ].dropna()
         else:
             df = self._obj.reset_index()[[self._time, col]].dropna()
 
@@ -574,7 +579,7 @@ class TimeSeriesAccessor(TimeSeries):
                 ds = utide_dict2ds_scalar(self._tidal_harmonics[col])
             elif isinstance(col, list):
                 ds = utide_dict2ds_vector(self._tidal_harmonics[col[0] + "_" + col[1]])
-        
+
         if "amplitude" in ds:
             # convert to real/imag for netcdf storage
             ds["amplitude_real"] = np.real(ds["amplitude"])

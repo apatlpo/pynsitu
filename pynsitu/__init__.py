@@ -89,10 +89,12 @@ def get_cmap_colors(Nc, cmap="plasma"):
 
 # utils for vector manipulation and conversions
 
+
 def rotate(theta, u, v):
-    """ rotate by angle theta (rad)"""
+    """rotate by angle theta (rad)"""
     cos, sin = np.cos(theta), np.sin(theta)
-    return u*cos + v*sin, -u*sin + v*cos
+    return u * cos + v * sin, -u * sin + v * cos
+
 
 def uv2speedheading(u, v):
     """converts eastward and northward velocities into speed and heading

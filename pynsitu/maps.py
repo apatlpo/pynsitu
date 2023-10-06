@@ -94,13 +94,14 @@ def plot_map(
         fig = plt.figure(figsize=figsize)
     proj, extent = get_projection(extent)
     if tile is not None:
-        tile_cache="/tmp/cartopy_cache"
+        tile_cache = "/tmp/cartopy_cache"
         import cartopy.io.img_tiles as cimgt
+
         if isinstance(tile, tuple):
             tile_level = tile[1]
-            if len(tile)>2:
+            if len(tile) > 2:
                 # trick to refresh tile cache
-                tile_cache=None
+                tile_cache = None
             tile = tile[0]
         elif isinstance(tile, int):
             tile_level = tile

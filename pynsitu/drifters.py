@@ -285,7 +285,7 @@ def variational_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
     else:
         # enforce t_target type
         t_target = pd.DatetimeIndex(t_target)
@@ -616,7 +616,7 @@ def spydell_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
 
     # xarray for easy interpolation
     ds = df.to_xarray()[["x", "y", "u", "v"]]
@@ -982,7 +982,7 @@ def lowess_smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
     # t_ target in seconds from first time
     date_target = (t_target - t_target[0]) / pd.Timedelta("1s")
 
@@ -1290,7 +1290,7 @@ def smooth(
     df,
     method,
     t_target,
-    maxgap=4 * 86400,
+    maxgap=3 * 3600,
     parameters=dict(),
     import_columns=["id"],
     spectral_diff=True,
@@ -1338,91 +1338,90 @@ def smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min(), df.index.max(), freq=t_target)
+        t_target = pd.date_range(df.index.min().ceil('30min'), df.index.max(), freq=t_target) # add ceil so all drifters in smooth_all are on the same time grid
     else:
         # enforce t_target type
         t_target = pd.DatetimeIndex(t_target)
 
     # divide into blocs if gap bigger than maxgap
     DF, DF_target, DF_target_gap = divide_blocs(df, t_target, maxgap)
+    print(f'Divided into {len(DF)} segments')
+    
+    # APPLY ON SEGMENTS
+    if method=='variational' or method=='spydell':
+        DF_out = []
+        for i in range(len(DF)):
+            df_, t_target_ = DF[i], DF_target[i]
+            if method == "variational":
+                param = [
+                    "acc_cut",
+                    "position_error",
+                    "acceleration_amplitude",
+                    "acceleration_T",
+                    "time_chunk",
+                    "acc_cut_key",
+                ]
+                assert np.all(
+                    [p in param for p in parameters]
+                ), f"parameters keys must be in {param}"
+                # try :
+                df_out = variational_smooth(
+                    df_,
+                    t_target_,
+                    **parameters,
+                    import_columns=import_columns,
+                    spectral_diff=spectral_diff,
+                    geo=geo,
+                )
+                # except :
+                # assert False, (df_, t_target_, len(df_), len(t_target_))
 
-    DF_out = []
-    for i in range(len(DF)):
-        df_, t_target_ = DF[i], DF_target[i]
-        if method == "variational":
-            param = [
-                "acc_cut",
-                "position_error",
-                "acceleration_amplitude",
-                "acceleration_T",
-                "time_chunk",
-                "acc_cut_key",
-            ]
-            assert np.all(
-                [p in param for p in parameters]
-            ), f"parameters keys must be in {param}"
-            # try :
-            df_out = variational_smooth(
-                df_,
-                t_target_,
+            elif method == "spydell":
+                param = ["acc_cut", "nb_pt_mean"]
+                assert np.all(
+                    [p in param for p in parameters]
+                ), f"parameters keys must be in {param}"
+                try:
+                    df_out = spydell_smooth(
+                        df_,
+                        t_target_,
+                        **parameters,
+                        import_columns=import_columns,
+                        spectral_diff=spectral_diff,
+                        geo=geo,
+                    )
+                except:
+                    assert False, (df_, t_target_, len(df_), len(t_target_))
+            DF_out.append(df_out)
+        dfo = pd.concat(DF_out)
+        dfo = dfo.reindex(t_target).interpolate()# LINEAR INTERPOLATION IN GAPS
+                    
+    #APPLY ON the whole trajectory (linear interpolation in gaps already done by LOWESS)                
+    elif method == "lowess":
+        param = ["degree", "iteration", "T_low_pass", "cutoff_low_pass"]
+        assert np.all(
+            [p in param for p in parameters]
+        ), f"parameters keys must be in {param}"
+        try:
+            dfo = lowess_smooth(
+                df,
+                t_target,
                 **parameters,
                 import_columns=import_columns,
                 spectral_diff=spectral_diff,
                 geo=geo,
             )
-            # except :
-            # assert False, (df_, t_target_, len(df_), len(t_target_))
-
-        elif method == "lowess":
-            param = ["degree", "iteration", "T_low_pass", "cutoff_low_pass"]
-            assert np.all(
-                [p in param for p in parameters]
-            ), f"parameters keys must be in {param}"
-            try:
-                df_out = lowess_smooth(
-                    df_,
-                    t_target_,
-                    **parameters,
-                    import_columns=import_columns,
-                    spectral_diff=spectral_diff,
-                    geo=geo,
-                )
-            except:
-                assert False, (df_, t_target_, len(df_), len(t_target_))
-
-        elif method == "spydell":
-            param = ["acc_cut", "nb_pt_mean"]
-            assert np.all(
-                [p in param for p in parameters]
-            ), f"parameters keys must be in {param}"
-            try:
-                df_out = spydell_smooth(
-                    df_,
-                    t_target_,
-                    **parameters,
-                    import_columns=import_columns,
-                    spectral_diff=spectral_diff,
-                    geo=geo,
-                )
-            except:
-                assert False, (df_, t_target_, len(df_), len(t_target_))
-        else:
-            assert False, "method must be 'spydell', 'variational' or 'lowess' "
-
-        DF_out.append(df_out)
-    t_target_gap = pd.DatetimeIndex(
-        pd.concat([pd.Series(dti) for dti in DF_target])
-    ).sort_values()
-    dfo = pd.concat(DF_out)
-    dfo["gap_mask"] = 0  # out of gaps
-
-    # add back gap t_target values, fill nan values :
-    # - linearly interpolating for positions velocities etc
-    # - gap_mask nan=1
-    dfo = dfo.reindex(t_target)
-    dfo_ = dfo.drop(columns=["gap_mask"] + import_columns).interpolate()
-    gap_mask = dfo["gap_mask"].fillna(1)  # in gaps
-    dfo = pd.concat([dfo_, gap_mask], axis=1)
+        except:
+            assert False, (df, t_target)
+    else : 
+        
+        assert False, 'method must be "variational", "lowess", or "spydell"'
+    # gap_mask :
+    t_target_values= pd.DatetimeIndex(pd.concat([pd.Series(dti) for dti in DF_target])).sort_values()
+    gapmask = pd.DataFrame(index = t_target_values)
+    gapmask['gap_mask'] = 0 # 0 where a value is computed
+    gapmask = gapmask.reindex(t_target, fill_value=1)# 1 in gaps = linearly interpolated data
+    dfo = pd.concat([dfo, gapmask], axis=1)
 
     # gap value : time distance to the nearest neightbors in seconds
     dfo["gaps"] = gap_array(df.index.values, t_target.values)
@@ -1433,7 +1432,6 @@ def smooth(
             dfo[column] = df[column][0]
 
     return dfo
-
 
 def smooth_all(
     df,

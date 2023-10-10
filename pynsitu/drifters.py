@@ -856,7 +856,7 @@ def solve_position_velocity_acceleration(t_nb, x_nb, time_target):
 
 # @njit("UniTuple(float64[:], 2)(float64[:], float64[:], float64[:])")
 @njit
-def lowess(time, x, time_target, degree=2):
+def lowess(time, x, time_target,nb=4, degree=2):
     """perform a lowess interpolation
 
     Parameters
@@ -888,9 +888,9 @@ def lowess(time, x, time_target, degree=2):
 
     for i in prange(nt):
         if degree == 2:
-            nb = 5
+            nb = nb
         if degree == 3:
-            nb = 15
+            nb = nb
         i_nb = np.arange(i_closest[i] - nb // 2, i_closest[i] + nb // 2 + 1)
         a = [i < 0 or i > len(time) - 1 for i in i_nb]  # np.any not ok with numba
         if True in a:
@@ -929,6 +929,7 @@ def lowess_smooth(
     t_target,
     degree=2,
     iteration=3,
+    nb=4,
     T_low_pass=None,
     cutoff_low_pass=None,
     import_columns=None,
@@ -997,8 +998,8 @@ def lowess_smooth(
             time_target = (
                 date_target.values
             )  # final interpolation on regular t_target time
-        x_out, u_out, ax_out = lowess(time, x_out, time_target, degree=degree)
-        y_out, v_out, ay_out = lowess(time, y_out, time_target, degree=degree)
+        x_out, u_out, ax_out = lowess(time, x_out, time_target,nb=nb, degree=degree)
+        y_out, v_out, ay_out = lowess(time, y_out, time_target, nb=nb, degree=degree)
 
     # dataframe
     if degree == 2:
@@ -1398,7 +1399,7 @@ def smooth(
                     
     #APPLY ON the whole trajectory (linear interpolation in gaps already done by LOWESS)                
     elif method == "lowess":
-        param = ["degree", "iteration", "T_low_pass", "cutoff_low_pass"]
+        param = ["degree", "iteration", "nb","T_low_pass", "cutoff_low_pass"]
         assert np.all(
             [p in param for p in parameters]
         ), f"parameters keys must be in {param}"

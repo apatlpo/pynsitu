@@ -17,7 +17,7 @@ from numba import njit, guvectorize, int32, float64, prange
 #################################################################################
 
 
-def despike_isolated(df, acceleration_threshold, acc_key, verbose=True):
+def despike_isolated(df, acceleration_threshold, acc_key, verbose=False):
     """Drops isolated anomalous positions (spikes) in a position time series.
     Anomalous positions are first detected if acceleration exceed the provided
     threshold.
@@ -247,11 +247,13 @@ def variational_smooth(
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, +import_columns with index time
 
     """
+    df=df.copy()
     # store projection to align with dataframes produced
     if geo:
         if "lonc" in df:
             proj_ref = (df.lonc.values[0], df.latc.values[0])
-            import_columns += ["lonc", "latc"]
+            if 'lonc' not in import_columns:
+                import_columns += ["lonc", "latc"]
         else:
             proj_ref = df.geo.projection_reference
 
@@ -270,19 +272,18 @@ def variational_smooth(
             assert False, "longitude, latitude must be labelled as 'lon' and 'lat'"
     if acc_cut_key[2] not in df:
         assert False, "'acceleration' should be provided"
-
+    
     # despike acceleration
     try:
         df = despike_isolated(df, acc_cut, acc_cut_key)
     except:
         assert False, "pb despike"
-
     # select only x, y
     var = ["x", "y"] + import_columns
     # if geo:
     #    var += ["lon", "lat"]
     df = df[var]
-
+    
     # t_target
     if isinstance(t_target, str):
         t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target)
@@ -294,7 +295,6 @@ def variational_smooth(
     T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
 
     if not time_chunk or T < time_chunk * 1.1:
-        print(df.columns)
         df_out = _variational_smooth_one(
             df,
             t_target,
@@ -303,7 +303,6 @@ def variational_smooth(
             acceleration_T,
             geo,
         )
-
     else:
         print(f"Chunking dataframe into {time_chunk} days chunks")
         # divide target timeline into chunks
@@ -438,9 +437,8 @@ def _variational_smooth_one(
     # providing "nearest" above is essential to preserve type (on int64 data typically)
     # override with interpolation for float data
 
-    col_float = [
-        c for c in df.columns if np.issubdtype(df[c].dtype, float)
-    ]  # could skip x/y: and c not in ["x", "y"]
+    col_float = [c for c in df.columns if np.issubdtype(df[c], float)]
+
     for c in col_float:
         df_out[c] = (
             df[c]
@@ -610,7 +608,8 @@ def spydell_smooth(
     if geo:
         if "lonc" in df:
             proj_ref = (df.lonc.values[0], df.latc.values[0])
-            import_columns += ["lonc", "latc"]
+            if 'lonc' not in import_columns:
+                import_columns += ["lonc", "latc"]
         else:
             proj_ref = df.geo.projection_reference
 
@@ -973,7 +972,8 @@ def lowess_smooth(
     # store projection to align with dataframes produced
     if geo:
         if "lonc" in df:
-            import_columns += ["lonc", "latc"]
+            if 'lonc' not in import_columns:
+                import_columns += ["lonc", "latc"]
             proj_ref = (df.lonc.values[0], df.latc.values[0])
         else:
             proj_ref = df.geo.projection_reference
@@ -1020,7 +1020,7 @@ def lowess_smooth(
     # APPLY LOW PASS -> only on velocities + reintegrate positions
     if T_low_pass:
         df_out = low_pass_(df_out, T_low_pass, cutoff_low_pass)
-        print(f"LOW-PASS : {cutoff_low_pass}cpd with {T_low_pass}pad")
+        print(f"LOW-PASS : {cutoff_low_pass}cpd with {T_low_pass}days length")
 
     # import columns/info ex: id or time
     if import_columns:
@@ -1199,7 +1199,7 @@ def posteriori_low_pass_uv(df, T=20, cutoff=4, import_columns=["id"]):
 
 
 # low_pass to integrate in a smmothing function
-def low_pass_(df, T=20, cutoff=4):
+def low_pass_(df, T=1, cutoff=11.5):
     """apply low pass filter on velocity and reintegrate x, y
     Parameters
     ----------
@@ -1301,17 +1301,15 @@ def divide_blocs(df, t_target, maxgap):
     DF_target_gap : list of pd.date_time_index,
         list of times in gaps bigger than maxgap
     """
-
+    dti = t_target[1] - t_target[0]
     # check that maxgap > t_target delta
-    assert maxgap > (t_target[1] - t_target[0]) / pd.Timedelta(
-        "1s"
-    ), "maxgap should be bigger than the t_target delta"
+    assert maxgap > dti / pd.Timedelta("1s"), "maxgap should be bigger than the t_target delta"
 
     # divide into blocs if gap bigger than maxgap
     DF = []
     DF_target = []
     DF_target_gap = []
-
+    
     df = df.reset_index()
     ts, te = find_gap(df, maxgap)
     tcut = np.sort([df.time.min()] + list(ts) + list(te) + [df.time.max()])
@@ -1323,8 +1321,8 @@ def divide_blocs(df, t_target, maxgap):
         test = test1 & test2
         df_ = df[test]
         # if less than two points in the
-        if len(df_) < 2:
-            print("WARNING: 0 or 1 point between two gaps, include them in the gap")
+        if len(df_) < 2 or (df_.time.max()-df_.time.min())<dti*6:#minimum of 5 values for matrice n in variational method not to be singular
+            print("WARNING: not enougth points between two gaps, include them in the gap")
             tcut_to_remove.append(tcut[i])
             tcut_to_remove.append(tcut[i + 1])
             continue
@@ -1337,7 +1335,6 @@ def divide_blocs(df, t_target, maxgap):
         DF_target.append(t_target[test])
         DF_target_gap.append(t_target[np.logical_not(test)])
     return DF, DF_target, DF_target_gap
-
 
 def gap_array(time, t_target):
     """Returns time distance between time in t_target and their nearest neightbor in time
@@ -1361,10 +1358,10 @@ def smooth(
     df,
     method,
     t_target,
-    maxgap=3 * 3600,
+    maxgap=4 * 3600,
     parameters=dict(),
     import_columns=["id"],
-    spectral_diff=True,
+    spectral_diff=False,
     geo=True,
 ):
     """
@@ -1409,7 +1406,7 @@ def smooth(
 
     # t_target
     if isinstance(t_target, str):
-        t_target = pd.date_range(df.index.min().ceil('30min'), df.index.max(), freq=t_target) # add ceil so all drifters in smooth_all are on the same time grid
+        t_target = pd.date_range(df.index.min().ceil(t_target), df.index.max(), freq=t_target) # add ceil so all drifters in smooth_all are on the same time grid
     else:
         # enforce t_target type
         t_target = pd.DatetimeIndex(t_target)
@@ -1422,7 +1419,8 @@ def smooth(
     if method=='variational' or method=='spydell':
         DF_out = []
         for i in range(len(DF)):
-            df_, t_target_ = DF[i], DF_target[i]
+            try : df_, t_target_ = DF[i], DF_target[i]
+            except : continue #if DF_target is empty
             if method == "variational":
                 param = [
                     "acc_cut",
@@ -1508,7 +1506,7 @@ def smooth_all(
     df,
     method,
     t_target,
-    maxgap=4 * 86400,
+    maxgap=4*3600,
     parameters=dict(),
     import_columns=["id"],
     spectral_diff=True,
@@ -1724,3 +1722,18 @@ def mean_position(df, Lx=None):
             x = df[dim_x].mean()
         y = df[dim_y].mean()
         return x, y
+
+    
+#################################################################################
+# ------------------------ OPTIMIZE METHOD -------------------------------    
+    
+parameters_var = dict(
+    acc_cut=1,
+    position_error=60,
+    acceleration_amplitude=4e-6,
+    acceleration_T=0.05 * 86400,
+    time_chunk=2,
+    acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"),
+)
+parameters_lowess = dict(degree=2, iteration=3, T_low_pass = 1, cutoff_low_pass = 11.5)
+maxgap = 4*86400

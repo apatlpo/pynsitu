@@ -1047,9 +1047,79 @@ def lowess_smooth(
 
 ###########################################
 # -----------LOWPASS------------#
+def posteriori_low_pass_xy(df, T=1, cutoff=13, import_columns=["id"]):
+    """Apply low pass filter to a smoothed trajectory a posteriori
 
+    Parameters
+    ----------
+    df: dataframe, must contain x, y
+    T : float
+        Filter length in days
+    cutoff : float
+        low pass filter cutoff frequency in cpp
+    import_columns : list of str
+        list of df constant columns we want to import (ex: id, platform)
 
-def posteriori_low_pass(df, T=20, cutoff=4, import_columns=["id"]):
+    Return : dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, accelerations, +norms, id, platform
+    """
+
+    from scipy.signal import filtfilt
+    from scipy.integrate import cumulative_trapezoid
+    from scipy.optimize import minimize
+
+    # coefficients
+    dt = df.dt.mean() / 3600 / 24  # in days
+    from pynsitu.tseries import generate_filter
+
+    taps = generate_filter(band="low", dt=dt, T=T, bandwidth=cutoff)
+    dff = df[["x", "y"]]
+    # apply filter
+    dff["x"] = filtfilt(taps, 1, df.x.values)
+    dff["y"] = filtfilt(taps, 1, df.y.values)
+
+    # recompute velocities
+    compute_velocities(
+            dff,
+            "index",
+            names=("u", "v", "U"),
+            distance='xy',
+            inplace=True,
+            centered=True,
+            fill_startend=True,
+        )
+    
+    # recompute acceleration
+    compute_accelerations(
+        dff,
+        from_=("xy", "x", "y"),
+        names=("ax", "ay", "Axy"),
+        centered_velocity=True,
+        time="index",
+        fill_startend=True,
+        inplace=True,
+        keep_dt=False,
+    )
+    compute_accelerations(
+        dff,
+        from_=("velocities", "u", "v"),
+        names=("au", "av", "Auv"),
+        centered_velocity=True,
+        time="index",
+        fill_startend=True,
+        inplace=True,
+        keep_dt=True,
+    )
+
+    # import columns/info ex: id or time
+    if import_columns:
+        for column in import_columns:
+            dff[column] = df[column][0]
+
+    dff["X"] = np.sqrt(dff["x"] ** 2 + dff["y"] ** 2)
+    dff["U"] = np.sqrt(dff["u"] ** 2 + dff["v"] ** 2)
+    return dff
+
+def posteriori_low_pass_uv(df, T=20, cutoff=4, import_columns=["id"]):
     """Apply low pass filter to a smoothed trajectory a posteriori
 
     Parameters

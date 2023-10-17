@@ -386,7 +386,7 @@ def variational_smooth(
         df_out["lon"] = df.lonc.mean()
         df_out["lat"] = df.latc.mean()
         df_out.geo.compute_velocities(
-            names=("u", "v", "uv"),
+            names=("u", "v", "U"),
             distance=dist,
             inplace=True,
             fill_startend=True,

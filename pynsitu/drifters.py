@@ -1321,7 +1321,7 @@ def divide_blocs(df, t_target, maxgap):
         test = test1 & test2
         df_ = df[test]
         # if less than two points in the
-        if len(df_) < 2 or (df_.time.max()-df_.time.min())<dti*6:#minimum of 5 values for matrice n in variational method not to be singular
+        if len(df_) < 5 or (df_.time.max()-df_.time.min())<dti*6:#minimum of 5 values for matrice n in variational method not to be singular
             print("WARNING: not enougth points between two gaps, include them in the gap")
             tcut_to_remove.append(tcut[i])
             tcut_to_remove.append(tcut[i + 1])
@@ -1463,7 +1463,7 @@ def smooth(
                     assert False, (df_, t_target_, len(df_), len(t_target_))
             DF_out.append(df_out)
         dfo = pd.concat(DF_out)
-        dfo = dfo.reindex(t_target).interpolate()# LINEAR INTERPOLATION IN GAPS
+        dfo = dfo.reindex(t_target).interpolate(method='slinear',limit_area='inside')# LINEAR INTERPOLATION IN GAPS
                     
     #APPLY ON the whole trajectory (linear interpolation in gaps already done by LOWESS)                
     elif method == "lowess":
@@ -1730,7 +1730,7 @@ def mean_position(df, Lx=None):
 parameters_var = dict(
     acc_cut=1,
     position_error=60,
-    acceleration_amplitude=4e-6,
+    acceleration_amplitude=5e-6,
     acceleration_T=0.05 * 86400,
     time_chunk=2,
     acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"),

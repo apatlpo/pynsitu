@@ -776,6 +776,13 @@ class Campaign(object):
                 return None
             return file
 
+        # straight zarr archive
+        if ".zarr" in item:
+            file = os.path.join(self["path_processed"], item)
+            if not os.path.isdir(file):
+                return None
+            return file
+
         if "*" in item:
             files = sorted(
                 glob(os.path.join(self["path_processed"], item)),

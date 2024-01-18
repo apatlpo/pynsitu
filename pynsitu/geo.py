@@ -83,7 +83,7 @@ def azimuth_distance(lon0, lat0, lon1, lat1, ellps="WGS84"):
 
     Returns
     -------
-    az12,az21,dist
+    az12 (deg), az21 (deg), dist (meters)
 
     """
     g = pyproj.Geod(ellps=ellps)

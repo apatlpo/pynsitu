@@ -43,7 +43,7 @@ from .geo import deg2rad, rad2deg, g, deg2m
 from pandas import Timedelta
 
 day = Timedelta("1D")
-hour = Timedelta("1H")
+hour = Timedelta("1h")
 second = Timedelta("1s")
 #
 knot = 0.514

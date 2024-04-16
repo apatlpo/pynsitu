@@ -254,7 +254,7 @@ def plot_moving_platform(
     t,
     ax,
     dt_trail=None,
-    marker_memory="10T",
+    marker_memory="10min",
     head_style={},
     **trail_style,
 ):

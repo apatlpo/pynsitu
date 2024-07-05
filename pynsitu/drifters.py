@@ -716,7 +716,7 @@ def spydell_smooth(
 
 
 ###########################################
-# -----------LOWESS METHOD------------#
+# -----------w METHOD------------#
 
 
 @njit
@@ -1488,8 +1488,8 @@ def smooth(
     # gap_mask :
     t_target_values= pd.DatetimeIndex(pd.concat([pd.Series(dti) for dti in DF_target])).sort_values()
     gapmask = pd.DataFrame(index = t_target_values)
-    gapmask['gap_mask'] = 0 # 0 where a value is computed
-    gapmask = gapmask.reindex(t_target, fill_value=1)# 1 in gaps = linearly interpolated data
+    gapmask['gap_mask'] = 1 # 1 where a value is computed
+    gapmask = gapmask.reindex(t_target, fill_value=0)# 0 in gaps = linearly interpolated data
     dfo = pd.concat([dfo, gapmask], axis=1)
 
     # gap value : time distance to the nearest neightbors in seconds
@@ -1726,14 +1726,11 @@ def mean_position(df, Lx=None):
     
 #################################################################################
 # ------------------------ OPTIMIZE METHOD -------------------------------    
-    
-parameters_var = dict(
-    acc_cut=1,
-    position_error=60,
-    acceleration_amplitude=5e-6,
-    acceleration_T=0.05 * 86400,
-    time_chunk=2,
-    acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"),
-)
-parameters_lowess = dict(degree=2, iteration=3, T_low_pass = 1, cutoff_low_pass = 11.5)
-maxgap = 4*86400
+
+from synthetic_traj import param_lowess, param_var
+
+optimized_parameters_lowess = param_lowess.copy()
+optimized_parameters_var = param_var.copy()
+optimized_parameters_var.update(acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"))
+
+maxgap = 3*3600

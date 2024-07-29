@@ -196,91 +196,6 @@ def compute_acc(df_out, geo, spectral_diff, method, velocities_key, acceleration
                 )
 
 
-""" FOR TEST ONLY : test reveals that considering accelerations computed from xy minimize errors for the lowess and the variational method but not for spydell for which it should prefereably be computed from velocities
-
-def compute_acc(df_out, geo, spectral_diff):
-    if spectral_diff:
-        if geo:
-            df_out.geo.compute_accelerations(
-                from_=("xy_spectral", "x", "y"),
-                names=("ax", "ay", "Axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-            )
-            df_out.geo.compute_accelerations(
-                from_=("velocities_spectral", "u", "v"),
-                names=("au", "av", "Auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-            )
-            # should still recompute for non-geo datasets
-        else:
-            compute_accelerations(
-                df_out,
-                from_=("xy_spectral", "x", "y"),
-                names=("ax", "ay", "Axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-                keep_dt=False,
-            )
-            compute_accelerations(
-                df_out,
-                from_=("velocities_spectral", "u", "v"),
-                names=("au", "av", "Auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-                keep_dt=True,
-            )
-    else:
-        if geo:
-            df_out.geo.accelerations(
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "Axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-            )
-            df_out.geo.compute_accelerations(
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "Auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-            )
-            # should still recompute for non-geo datasets
-        else:
-            compute_accelerations(
-                df_out,
-                from_=("xy", "x", "y"),
-                names=("ax", "ay", "Axy"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-                keep_dt=False,
-            )
-            compute_accelerations(
-                df_out,
-                from_=("velocities", "u", "v"),
-                names=("au", "av", "Auv"),
-                centered_velocity=True,
-                time="index",
-                fill_startend=True,
-                inplace=True,
-                keep_dt=True,
-            )
-"""
-
 ###########################################
 # -----------VARIATIONNAL METHOD------------#
 def variational_smooth(
@@ -822,9 +737,7 @@ def spydell_smooth(
         # initiate lon, lat (needed to compute_acc, even if it is computed from x, y)
         df_out["lon"] = df.lonc.mean()
         df_out["lat"] = df.latc.mean()
-    compute_acc(
-        df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key
-    )
+    
 
     # update lon/lat
     if geo:
@@ -833,9 +746,8 @@ def spydell_smooth(
         df_out.geo.compute_lonlat()  # inplace
 
     df_out["X"] = np.sqrt(df_out["x"] ** 2 + df_out["y"] ** 2)
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    compute_acc(df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key)
+    df_out[accelerations_key[2]] = np.sqrt(df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2)
 
     return df_out
 

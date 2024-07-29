@@ -652,7 +652,7 @@ def spydell_smooth(
     ds["x"] = x_0 + x_cum
     ds["y"] = y_0 + y_cum
 
-    # 5) remove spike and interpolate
+    # 5) remove spike and interpolate + compute velocities again
     ds["ax"] = ds.u.differentiate("time", datetime_unit="s")
     ds["ay"] = ds.v.differentiate("time", datetime_unit="s")
     x = ds.where(ds.ax < acc_cut).x
@@ -662,7 +662,9 @@ def spydell_smooth(
     )
     ds["x"] = x.interpolate_na("time")
     ds["y"] = y.interpolate_na("time")
-
+    ds['u'] = ds.x.differentiate("time", datetime_unit="s")
+    ds['v'] = ds.y.differentiate("time", datetime_unit="s")
+    
     # 6) Box mean on nb_pt_mean
     if nb_pt_mean % 2 == 0:
         warnings.warn("nb_pt_mean should be odd, set to np_pt_window+1")

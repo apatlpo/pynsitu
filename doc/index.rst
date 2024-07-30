@@ -34,6 +34,7 @@ Documentation
    example_events
    example_tseries
    example_drifters
+   example_movie
 
 .. toctree::
    :maxdepth: 1

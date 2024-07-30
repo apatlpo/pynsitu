@@ -22,6 +22,11 @@ except:
     print("Warning: could not import pytide")
 
 try:
+    import utide
+except:
+    print("Warning: could not import utide")
+
+try:
     import pyTMD
 
     # generates tons of warnings, turn off till we actually need pyTMD
@@ -33,6 +38,7 @@ except:
 
 deg2rad = np.pi / 180.0
 cpd = 86400 / 2 / np.pi
+_time_origin = pd.Timestamp("2010-01-01")
 
 
 def timedelta2rule(dt, base_unit="1s"):
@@ -96,7 +102,9 @@ class TimeSeries:
 
     @property
     def _is_timeline_uniform(self):
-        return len(np.unique(self.get_dt())) == 1
+        dt = np.unique(self.get_dt())
+        dt_median = np.median(dt)
+        return all((dt - dt_median) / dt_median < 1e-6)
 
     @property
     def time_origin(self):
@@ -106,7 +114,7 @@ class TimeSeries:
             if self.is_numeric:
                 self._time_origin = 0.0
             elif self.is_datetime:
-                self._time_origin = pd.Timestamp("2010-01-01")
+                self._time_origin = _time_origin
             elif self.is_timedelta:
                 self._time_origin = pd.Timedelta("0")
         return self._time_origin
@@ -281,14 +289,34 @@ class TimeSeriesAccessor(TimeSeries):
 
     # resampling
     def resample_uniform(self, rule, inplace=False, **kwargs):
-        """resample on a uniform time line via interpolation"""
+        """resample on a uniform time line via interpolation
+        this may be useful for upsampling for instance
+
+        Parameters
+        ----------
+        rule: str
+            Sets output frequency, e.g. "1T" for 1 minute or "1H" for 1 hour
+        inplace: boolean
+            Operated inplace
+        **kwargs: passed to pandas interpolate method
+        """
         df = self._obj
         if not self._time_index:
             df = df.set_index(self._time)
         # leverage standard pandas resampling to get new time line
         new_time = df.resample(rule).count().index
+        #
+        dkwargs = dict(method="slinear")
+        dkwargs.update(**kwargs)
+        assert (
+            dkwargs["method"] != "linear"
+        ), " `linear` is not adequate for desired resampling, use default `slinear instead` "
+        # Note: default is `linear` which assumes uniform timeline otherwise
+        # and is thus not adequate
         df_interp = (
-            df.reindex(new_time.union(df.index)).interpolate(**kwargs).reindex(new_time)
+            df.reindex(new_time.union(df.index))
+            .interpolate(**dkwargs)
+            .reindex(new_time)
         )
         # does not perform the same operation
         # df = df.resample(rule).interpolate(**kwargs)
@@ -374,9 +402,8 @@ class TimeSeriesAccessor(TimeSeries):
     def tidal_analysis(
         self,
         col,
-        constituents=[],
         library="pytide",
-        plot=True,
+        **kwargs,
     ):
         """compute a tidal analysis on one column
 
@@ -387,84 +414,207 @@ class TimeSeriesAccessor(TimeSeries):
         constituents: list, optional
             List of consistuents
         library: str, optional
-            Tidal library to use
+            Tidal library to use, e.g. "pytide", "utide"
         """
         # select and drop nan
-        df = self._obj.reset_index()[[self._time, col]].dropna()
+        scalar = True
+        if isinstance(col, list):
+            scalar = False
+            df = self._obj.reset_index()[
+                [
+                    self._time,
+                ]
+                + col
+            ].dropna()
+        else:
+            df = self._obj.reset_index()[[self._time, col]].dropna()
 
         if library == "pytide":
-            dfh = pytide_harmonic_analysis(
+            x = df[col]
+            dkwargs = dict(detrend=True)
+            dkwargs.update(**kwargs)
+            # detrend
+            slope, mean = (np.NaN,) * 2
+            if dkwargs["detrend"]:
+                t = (df[self._time] - _time_origin) / pd.Timedelta("1H")
+                trend = np.polyfit(t, df[col], 1)
+                slope, mean = trend
+                x = x - np.poly1d(trend)(t)
+            h = pytide_harmonic_analysis(
                 df.time,
-                df[col],
-                constituents=constituents,
+                x,
+                **kwargs,
             )
+            h.trend_slope = slope
+            h.trend_mean = mean
+        elif library == "utide":
+            dkwargs = dict(
+                nodal=True,
+                method="ols",
+                conf_int="MC",
+                verbose=False,
+            )
+            dkwargs.update(**kwargs)
+            if scalar:
+                x = df[col]
+            else:
+                # vector
+                x = df[col[0]]
+                dkwargs["v"] = df[col[1]]
+                col = col[0] + "_" + col[1]
+            h = utide.solve(
+                df.time,
+                x,
+                **dkwargs,
+            )
+            # utide outputs utide.utilities.Bunch objects
+        # store library
+        h.tidal_library = library
+
         dh = self._tidal_harmonics
         if dh is None:
-            dh = {col: dfh}
+            dh = {col: h}
         else:
-            dh[col] = dfh
+            dh[col] = h
         self._tidal_harmonics = dh
 
+    def tidal_plot_harmonics(self, col):
         # plot amplitudes
-        if plot:
-            fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-            ax.stem(dfh.frequency, np.abs(dfh.amplitude))
-            for c, r in dfh.iterrows():
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+        h = self._tidal_harmonics[col]
+        library = h.tidal_library
+        if library == "pytide":
+            ax.stem(h.frequency, np.abs(h.amplitude))
+            for c, r in h.iterrows():
                 ax.text(r["frequency"] + 0.05, abs(r["amplitude"]), c)
-            ax.grid()
+        elif library == "utide":
+            assert False, "not implemented yet"
+        ax.grid()
 
     def tidal_predict(
         self,
         col=None,
         time=None,
-        amplitudes=None,
+        inplace=False,
         constituents=None,
-        library="pytide",
         **kwargs,
     ):
         if self._tidal_harmonics is None or (
-            col is not None and col not in self._tidal_harmonics
+            isinstance(col, str) and col not in self._tidal_harmonics
         ):
             raise AttributeError(
                 f"not amplitudes found for {col} or provided, "
                 + "you need to run an harmonic analysis first"
             )
-        if time is None:
+        if time is None or inplace:
             time = self.time
-        if amplitudes is None:
-            amplitudes = self._tidal_harmonics[col]["amplitude"]
+        if isinstance(col, str):
+            h = self._tidal_harmonics[col]
+            scalar = True
+            label = f"{col}_tidal"
+        elif isinstance(col, list):
+            h = self._tidal_harmonics[col[0] + "_" + col[1]]
+            scalar = False
+            label = (col[0] + "_tidal", col[1] + "_tidal")
+
+        library = h.tidal_library
+        assert (
+            scalar or library == "utide"
+        ), "vector tidal prediction is only available with utide"
+
         if constituents is not None:
             if isinstance(constituents, str):
                 constituents = [constituents]
-            amplitudes = amplitudes.loc[constituents]
 
         if library == "pytide":
+            amplitudes = h["amplitude"]
+            if constituents is not None:
+                amplitudes = amplitudes.loc[constituents]
             s = pytide_predict_tides(time, amplitudes, **kwargs)
+            label = f"{col}_tidal"
+            out = pd.DataFrame({label: s, self._time: time})
+            # add trend back
+            slope, mean = h.trend_slope, h.trend_mean
+            if not np.isnan(mean):
+                t = (out[self._time] - _time_origin) / pd.Timedelta("1H")
+                trend = [slope, mean]
+                out[label] += np.poly1d(trend)(t)
+                out = out.set_index(self._time)
+        elif library == "utide":
+            dkwargs = dict(verbose=False)
+            dkwargs.update(**kwargs)
+            tide = utide.reconstruct(time, h, **dkwargs)
+            if scalar:
+                out = pd.Series(tide["h"], index=time, name=label)
+            else:
+                out = pd.DataFrame(
+                    {label[0]: tide["u"], label[1]: tide["v"]},
+                    index=time,
+                )
+        if inplace:
+            if scalar:
+                self._obj[label] = out
+            else:
+                self._obj[label[0]] = out[label[0]]
+                self._obj[label[1]] = out[label[1]]
+        else:
+            return out
 
-        return pd.Series(s, index=time, name=f"{col}_tidal")
-
-    def package_harmonics(self):
+    def package_harmonics(self, col=None):
         """package harmonics for storage"""
-        H = []
-        for c, h in self._tidal_harmonics.items():
-            H.append(h.to_xarray().expand_dims(vars=pd.Index([c])))
-        ds = xr.concat(H, "vars")
-        # convert to real/imag for netcdf storage
-        ds["amplitude_real"] = np.real(ds["amplitude"])
-        ds["amplitude_imag"] = np.imag(ds["amplitude"])
-        ds = ds.drop("amplitude")
+        library = [h.tidal_library for c, h in self._tidal_harmonics.items()][0]
+
+        if library == "pytide":
+            H = []
+            for c, h in self._tidal_harmonics.items():
+                H.append(h.to_xarray().expand_dims(vars=pd.Index([c])))
+            ds = xr.concat(H, "vars")
+            # ds["trend_slope"] = ... to implement
+            # ds["trend_mean"] = ...
+        elif library == "utide":
+            assert (
+                col is not None
+            ), "you must specify one or two columns with utide harmonics"
+            if isinstance(col, str):
+                ds = utide_dict2ds_scalar(self._tidal_harmonics[col])
+            elif isinstance(col, list):
+                ds = utide_dict2ds_vector(self._tidal_harmonics[col[0] + "_" + col[1]])
+
+        if "amplitude" in ds:
+            # convert to real/imag for netcdf storage
+            ds["amplitude_real"] = np.real(ds["amplitude"])
+            ds["amplitude_imag"] = np.imag(ds["amplitude"])
+            ds = ds.drop("amplitude")
+
+        ds.attrs["library"] = library
         return ds
 
-    def load_harmonics(self, file):
+    def load_harmonics(self, file, col=None):
         """load harmonics from a file"""
         ds = xr.open_dataset(file)
+
         dfh = {}
-        for c in ds.vars:
-            _c = str(c.values)
-            _df = ds.sel(vars=_c).to_dataframe()
-            _df["amplitude"] = _df["amplitude_real"] + 1j * _df["amplitude_imag"]
-            _df = _df.drop(columns=["amplitude_real", "amplitude_imag"])
-            dfh[_c] = _df
+        library = ds.attrs["library"]
+
+        if library == "pytide":
+            for c in ds.vars:
+                _c = str(c.values)
+                _df = ds.sel(vars=_c).to_dataframe()
+                _df["amplitude"] = _df["amplitude_real"] + 1j * _df["amplitude_imag"]
+                _df = _df.drop(columns=["amplitude_real", "amplitude_imag"])
+                _df.tidal_library = library
+                dfh[_c] = _df
+        elif library == "utide":
+            if isinstance(col, str):
+                ds["amplitude"] = ds["amplitude_real"] + 1j * ds["amplitude_imag"]
+                ds = ds.drop(["amplitude_real", "amplitude_imag"])
+                label = col
+                dfh[label] = utide_ds2dict_scalar(ds)
+            elif isinstance(col, list):
+                label = col[0] + "_" + col[1]
+                dfh[label] = utide_ds2dict_vector(ds)
+            dfh[label].tidal_library = library
+
         self._tidal_harmonics = dfh
 
 
@@ -741,7 +891,7 @@ def compute_spectrum_pd(
 
     Parameters
     ----------
-        da: ndarray, xr.DataArray
+        v: ndarray, pd.Series
             Time series, the index must be time (and named as it) if dt is not provided
         method: string
             Method that will be employed for spectral calculations.
@@ -843,17 +993,9 @@ def compute_spectrum_xr(
         # input_core_dims=[[time], [time]], # for two input variables
         output_core_dims=[["frequency"]],
     )
-
-    # spectral calculation kwargs
-    mkwargs = dict(axis=-1, fs=1 / dt)
-    if method in ["welch", "periodgram"]:
-        if method == "welch":
-            assert "nperseg" in kwargs, "nperseg is required for method welch"
-        mkwargs.update(**scipy_spectrum_kwargs)
-    mkwargs.update(**kwargs)
-
     # dask backend case
-    if da.chunks is not None:
+    dask_backend = da.chunks is not None
+    if dask_backend:
         # check number of time chunks
         time_chunks_num = len(da.chunks[da.get_axis_num(time)])
         assert (
@@ -863,25 +1005,19 @@ def compute_spectrum_xr(
             da = da.chunk({time: -1})
         aukwargs.update(
             dask="parallelized",
-            dask_gufunc_kwargs={"output_sizes": {"frequency": kwargs["nperseg"]}},
         )
 
-    if method in ["welch", "periodgram"]:
-        # _scipy_spectra_wrapper(da, )
+    # spectral calculation kwargs
+    mkwargs = dict(axis=-1, fs=1 / dt)
+    if method in ["welch", "periodogram"]:
+        mkwargs.update(**scipy_spectrum_kwargs)
         if method == "welch":
             assert "nperseg" in kwargs, "nperseg is required for method welch"
             if "alpha" not in mkwargs:
-                # required because alpha cannot be passed to periodogram
+                # necessary because alpha cannot be passed to periodogram
                 mkwargs["alpha"] = 0.5
-        #
-        func = _scipy_spectra_wrapper
         mkwargs["method"] = getattr(signal, method)
-        # run once to get frequency
-        _da = da.isel(**{d: 0 for d in da.dims if d != time}).values
-        f, _ = func(
-            _da,
-            **mkwargs,
-        )
+        func = _scipy_spectra_wrapper
     # elif method == "mtspec":
     #    from mtspec import mtspec
     #    lE, f = mtspec(
@@ -894,6 +1030,17 @@ def compute_spectrum_xr(
     #    lf, E, nu = tsa.multi_taper_psd(v, Fs=1 / dt, **dkwargs)
     #    f = fftfreq(len(lf)) * 24.0
     #    # print('Number of tapers = %d' %(nu[0]/2))
+    # update kwargs
+    mkwargs.update(**kwargs)
+    # run once to get frequency
+    _da = da.isel(**{d: 0 for d in da.dims if d != time}).values
+    f, _ = func(
+        _da,
+        **mkwargs,
+    )
+    # update output size if dask backend
+    if dask_backend:
+        aukwargs.update(dask_gufunc_kwargs={"output_sizes": {"frequency": f.size}})
 
     # core calculation
     mkwargs["ufunc"] = True
@@ -923,7 +1070,7 @@ def _scipy_spectra_wrapper(
     assert fs is not None, "fs must be provided"
     #
     dkwargs = dict(**kwargs)
-    if "alpha" is not None:
+    if alpha is not None:
         dkwargs["noverlap"] = round(alpha * kwargs["nperseg"])
     f, E = method(x, fs=fs, axis=axis, **dkwargs)
     #
@@ -933,7 +1080,7 @@ def _scipy_spectra_wrapper(
         return f, E
 
 
-# -------------------------- tidal analysis ----------------------------------
+# -------------------------- pytide tidal analysis ----------------------------------
 
 tidal_constituents = [
     "2n2",
@@ -978,8 +1125,8 @@ def pytide_harmonic_analysis(time, eta, constituents=[]):
 
     Parameters
     ----------
-    time:
-
+    time: np.array, pd.Series
+        timeline
     constituents: list
         tidal consituent e.g.:
             ["M2", "S2", "N2", "K2", "K1", "O1", "P1", "Q1", "S1", "M4"]
@@ -1003,7 +1150,7 @@ def pytide_harmonic_analysis(time, eta, constituents=[]):
         dict(
             amplitude=a,
             constituent=wt.constituents(),
-            frequency=wt.freq() * 86400 / 2 / np.pi,
+            frequency=wt.freq() * cpd,
             frequency_rad=wt.freq(),
         )
     ).set_index("constituent")
@@ -1070,3 +1217,236 @@ def load_equilibrium_constituents(c=None):
         p_names = ["amplitude", "phase", "omega", "alpha", "species"]
         p = pyTMD.load_constituent(c)
         return pd.Series({_n: _p for _n, _p in zip(p_names, p)})
+
+
+# -------------------------- utide tidal analysis ----------------------------------
+
+
+def _utide_load_frequencies():
+    frequency = 24 / pd.Series(utide.hours_per_cycle)  # cpd
+    f = frequency.rename("frequency").to_frame()
+    f["frequency_rad"] = frequency / cpd
+    f.index.name = "constituents"
+    return f
+
+
+_utide_keys_scalar = [
+    "A_ci",
+    "g_ci",
+    "PE",
+    "SNR",
+]
+_utide_keys_vector = [
+    "Lsmaj",
+    "Lsmin",
+    "theta",
+    "Lsmaj_ci",
+    "Lsmin_ci",
+    "theta_ci",
+    "g",
+    "g_ci",
+    "PE",
+    "SNR",
+]
+_utide_attrs_core = [
+    "nR",
+    "nNR",
+    "nI",
+]
+
+
+def utide_dict2ds_scalar(coef):
+    """transform utide scalar tidal harmonic output (dict) to xarray dataset"""
+
+    h = xr.Dataset(
+        dict(
+            **{k: ("constituents", coef[k]) for k in _utide_keys_scalar},
+            amplitude=("constituents", coef["A"] * np.exp(1j * coef["g"] * deg2rad)),
+            mean=coef["mean"],
+            slope=coef["slope"],
+            aux_frq=("constituents", coef["aux"]["frq"]),
+            aux_lind=("constituents", coef["aux"]["lind"]),
+        ),
+        coords=dict(
+            constituents=coef["name"],
+        ),
+        attrs={
+            **{k: att_filt(coef[k]) for k in _utide_attrs_core},
+            **{
+                "aux_" + k: att_filt(coef["aux"][k])
+                for k in [
+                    "reftime",
+                    "lat",
+                ]
+            },
+            **{
+                "opt_" + k: att_filt(coef["aux"]["opt"][k])
+                for k in list(coef["aux"]["opt"])
+                if k not in ["newopts"]
+            },
+            **{
+                "newopts" + k: att_filt(coef["aux"]["opt"]["newopts"][k])
+                for k in list(coef["aux"]["opt"]["newopts"])
+                if k not in ["robust_kw"]
+            },
+            **{
+                "robust_kw_"
+                + k: att_filt(coef["aux"]["opt"]["newopts"]["robust_kw"][k])
+                for k in coef["aux"]["opt"]["newopts"]["robust_kw"]
+            },
+        },
+    )
+    # add frequencies
+    f = _utide_load_frequencies()
+    h = h.assign_coords(**f.loc[h.constituents])
+
+    # ignores weights, diagn, for now
+
+    return h
+
+
+def utide_dict2ds_vector(coef):
+    """transform utide vector tidal harmonic output (dict) to xarray dataset"""
+    h = xr.Dataset(
+        dict(
+            **{k: ("constituents", coef[k]) for k in _utide_keys_vector},
+            umean=coef["umean"],
+            uslope=coef["uslope"],
+            vmean=coef["vmean"],
+            vslope=coef["vslope"],
+            aux_frq=("constituents", coef["aux"]["frq"]),
+            aux_lind=("constituents", coef["aux"]["lind"]),
+        ),
+        coords=dict(constituents=coef["name"]),
+        attrs={
+            **{k: att_filt(coef[k]) for k in _utide_attrs_core},
+            **{
+                "aux_" + k: att_filt(coef["aux"][k])
+                for k in [
+                    "reftime",
+                    "lat",
+                ]
+            },
+            **{
+                "opt_" + k: att_filt(coef["aux"]["opt"][k])
+                for k in list(coef["aux"]["opt"])
+                if k not in ["newopts"]
+            },
+            **{
+                "newopts" + k: att_filt(coef["aux"]["opt"]["newopts"][k])
+                for k in list(coef["aux"]["opt"]["newopts"])
+                if k not in ["robust_kw"]
+            },
+            **{
+                "robust_kw_"
+                + k: att_filt(coef["aux"]["opt"]["newopts"]["robust_kw"][k])
+                for k in coef["aux"]["opt"]["newopts"]["robust_kw"]
+            },
+        },
+    )
+    # add frequencies
+    f = _utide_load_frequencies()
+    h = h.assign_coords(**f.loc[h.constituents])
+
+    # ignores weights, diagn, for now
+
+    return h
+
+
+def utide_ds2dict_scalar(h):
+    """converts back to dict for prediction with utide"""
+    coef = utide.utilities.Bunch(
+        name=h.constituents.values,
+        A=np.abs(h["amplitude"]).values,
+        g=np.angle(h["amplitude"]) / deg2rad,
+        **{k: h[k].values for k in _utide_keys_scalar},
+    )
+    # scalar
+    coef["mean"] = float(h["mean"])
+    coef["slope"] = float(h["slope"])
+
+    # attrs
+    coef.update({k: att_ifilt(h.attrs[k]) for k in _utide_attrs_core})
+
+    # aux attributes
+    aux = {
+        k.replace("aux_", ""): att_ifilt(v) for k, v in h.attrs.items() if "aux" in k
+    }
+    opt = {
+        k.replace("opt_", ""): att_ifilt(v) for k, v in h.attrs.items() if "opt" in k
+    }
+    newopts = {
+        k.replace("newopts_", ""): att_ifilt(v)
+        for k, v in h.attrs.items()
+        if "newopts" in k
+    }
+    robust_kw = {
+        k.replace("robust_kw_", ""): att_ifilt(v)
+        for k, v in h.attrs.items()
+        if "robust_kw" in k
+    }
+    coef["aux"] = aux
+    coef["aux"]["frq"] = h["aux_frq"].values
+    coef["aux"]["lind"] = h["aux_lind"].values
+    coef["aux"]["opt"] = opt
+    coef["aux"]["opt"]["newopts"] = newopts
+    coef["aux"]["opt"]["newopts"]["robust_kw"] = robust_kw
+
+    return coef
+
+
+def utide_ds2dict_vector(h):
+    """converts back to dict for prediction with utide"""
+    coef = utide.utilities.Bunch(
+        name=h.constituents.values,
+        # A=np.abs(h["amplitude"]).values,
+        # g=np.angle(h["amplitude"])/deg2rad,
+        **{k: h[k].values for k in _utide_keys_vector},
+    )
+    # scalar
+    coef.update({k: float(h[k]) for k in ["umean", "vmean", "uslope", "vslope"]})
+
+    # attrs
+    coef.update({k: att_ifilt(h.attrs[k]) for k in _utide_attrs_core})
+
+    # aux attributes
+    aux = {
+        k.replace("aux_", ""): att_ifilt(v) for k, v in h.attrs.items() if "aux" in k
+    }
+    opt = {
+        k.replace("opt_", ""): att_ifilt(v) for k, v in h.attrs.items() if "opt" in k
+    }
+    newopts = {
+        k.replace("newopts_", ""): att_ifilt(v)
+        for k, v in h.attrs.items()
+        if "newopts" in k
+    }
+    robust_kw = {
+        k.replace("robust_kw_", ""): att_ifilt(v)
+        for k, v in h.attrs.items()
+        if "robust_kw" in k
+    }
+    coef["aux"] = aux
+    coef["aux"]["frq"] = h["aux_frq"].values
+    coef["aux"]["lind"] = h["aux_lind"].values
+    coef["aux"]["opt"] = opt
+    coef["aux"]["opt"]["newopts"] = newopts
+    coef["aux"]["opt"]["newopts"]["robust_kw"] = robust_kw
+
+    return coef
+
+
+def att_filt(v):
+    if v is None:
+        return "None"
+    elif isinstance(v, bool):
+        return int(v)
+    else:
+        return v
+
+
+def att_ifilt(v):
+    if v == "None":
+        return None
+    else:
+        return v

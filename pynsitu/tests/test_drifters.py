@@ -10,7 +10,12 @@ import pynsitu as pyn
 @pytest.fixture()
 def sample_drifter_data():
     """Create a drifter time series."""
-    time = pd.date_range(start="2018-01-01", end="2018-01-15", freq="1H")
+    return generate_drifter_data()
+
+
+def generate_drifter_data(end="2018-01-15", freq="1H", velocities=False):
+    """Create a drifter time series."""
+    time = pd.date_range(start="2018-01-01", end=end, freq=freq)
     v = 0.1  # m/s approx
     scale = 111e3
     time_scale = pd.Timedelta("10D")
@@ -19,6 +24,8 @@ def sample_drifter_data():
     df = pd.DataFrame(dict(lon=lon, lat=lat, time=time))
     df["id"] = "myid"
     df = df.set_index("time")
+    if velocities:
+        df.geo.compute_velocities(inplace=True)
     return df
 
 
@@ -50,3 +57,85 @@ def test_resample_smooth(sample_drifter_data):
     df = sample_drifter_data.geo.compute_velocities()  # to compute x/y
     t_target = pd.date_range(df.index[0], df.index[-1], freq="30T")
     df_smooth = pyn.drifters.resample_smooth(df, t_target, 100, 1e-4, 86400.0)
+    assert df_smooth is not None, df_smooth
+
+
+def test_time_window_processing():
+    """test the despiking procedure"""
+
+    # common parameters
+    T = pd.Timedelta("10D")
+    dummy_value = 1.0
+    gkwargs = dict(end="2018-03-01", velocities=True, freq="1H")
+
+    def _processing(df, dummy=None):
+        return pd.Series(dict(u=df["velocity_east"].mean(skipna=True) * 0.0 + dummy))
+
+    # generate a longer time series
+    df = generate_drifter_data(**gkwargs)
+    # add gaps
+    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.NaN
+
+    # base case
+    out = pyn.drifters.time_window_processing(
+        df,
+        _processing,
+        T,
+        geo=True,
+        dummy=dummy_value,
+    )
+    assert out["u"].mean(skipna=True) == dummy_value, out
+
+    # x, y - non-geo case
+    out = pyn.drifters.time_window_processing(
+        df,
+        _processing,
+        T,
+        xy=("x", "y"),
+        dummy=dummy_value,
+    )
+    assert out["u"].mean(skipna=True) == dummy_value, out
+
+    # time is float
+    time_unit = pd.Timedelta("1D")
+    df.index = (df.index - df.index[0]) / time_unit
+    Tf = T / time_unit
+    out = pyn.drifters.time_window_processing(
+        df,
+        _processing,
+        Tf,
+        geo=True,
+        dummy=dummy_value,
+    )
+    assert out["u"].mean(skipna=True) == dummy_value, out
+
+    ## temporal resampling
+
+    # with time as float
+    df = df.loc[(df.index < 10) | (df.index > 20)]
+    dtf = pd.Timedelta(gkwargs["freq"]) / time_unit
+    out = pyn.drifters.time_window_processing(
+        df,
+        _processing,
+        Tf,
+        dt=dtf,
+        geo=True,
+        dummy=dummy_value,
+    )
+
+    # with time as datetime
+    df = generate_drifter_data(**gkwargs)
+    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.NaN
+    df = df.loc[
+        (df.index < pd.Timestamp("2018-02-01"))
+        | (df.index > pd.Timestamp("2018-02-10"))
+    ]
+    out = pyn.drifters.time_window_processing(
+        df,
+        _processing,
+        T,
+        dt=gkwargs["freq"],
+        geo=True,
+        dummy=dummy_value,
+    )
+    assert out["u"].mean(skipna=True) == dummy_value, out

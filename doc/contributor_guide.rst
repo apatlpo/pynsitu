@@ -63,7 +63,7 @@ We need only two things: A PR to update the documentation and and making a relea
 1. Make sure that all the new features/bugfixes etc are appropriately documented in `doc/whats-new.rst`, add the date to the current release and make an empty (unreleased) entry for the next minor release as a PR.
 2. Navigate to the 'tags' symbol on the repos main page, click on 'Releases' and on 'Draft new release' on the right. Add the version number and a short description and save the release.
 
-From here the github actions take over and package things for `Pypi <https://pypi.org/project/xrft/>`_.
-The conda-forge package will be triggered by the Pypi release and you will have to approve a PR in `xrft-feedstock <https://github.com/conda-forge/xrft-feedstock>`_. This takes a while, usually a few hours to a day.
+From here the github actions take over and package things for `Pypi <https://pypi.org/project/pynsitu/>`_.
+(not valid to be made functional / updated) The conda-forge package will be triggered by the Pypi release and you will have to approve a PR in `xrft-feedstock <https://github.com/conda-forge/xrft-feedstock>`_. This takes a while, usually a few hours to a day.
 
 Thats it!

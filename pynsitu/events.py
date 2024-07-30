@@ -297,7 +297,7 @@ class Campaign(object):
         self.name = self.meta["name"]
 
         # deployments
-        if "deployments" in cp:
+        if "deployments" in cp and cp["deployments"] is not None:
             self.deployments = Deployments(
                 {
                     d: Deployment(label=d, **v) if d != "meta" else v
@@ -308,7 +308,7 @@ class Campaign(object):
             self.deployments = None
 
         # platforms
-        if "platforms" in cp:
+        if "platforms" in cp and cp["platforms"] is not None:
             self.platforms = _process_platforms(cp["platforms"])
         else:
             self.platforms = None
@@ -626,10 +626,12 @@ class Campaign(object):
         if platforms and self.platforms:
             for p, pf in self.platforms.items():
                 if platforms and pf["deployments"] and p not in exclude:
-                    for _, d in pf["deployments"].items():
+                    for dlabel, d in pf["deployments"].items():
                         _kwargs = dict(**pf["meta"])
                         if not labels:
                             _kwargs.pop("label")
+                        else:
+                            _kwargs["label"] = dlabel
                         plot_d(d, y, **_kwargs)
                     yticks.append(y)
                     yticks_labels.append(p)
@@ -773,6 +775,13 @@ class Campaign(object):
         if ".nc" in item:
             file = os.path.join(self["path_processed"], item)
             if not os.path.isfile(file):
+                return None
+            return file
+
+        # straight zarr archive
+        if ".zarr" in item:
+            file = os.path.join(self["path_processed"], item)
+            if not os.path.isdir(file):
                 return None
             return file
 

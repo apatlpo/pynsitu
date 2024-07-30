@@ -10,8 +10,6 @@
 # launch the script after anaconda login
 library="pynsitu"
 tag="0.0.1"
-#in_directory = "/Users/slgentil/wheels/osx-64/"
-#out_directory = "/Users/slgentil/wheels"
 #in_directory="${HOME}/.miniconda3/envs/condabuild/conda-bld/osx-64/"
 in_directory="${HOME}/Code/wheels/osx-64/"
 out_directory="${HOME}/Code/wheels/"

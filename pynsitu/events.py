@@ -284,7 +284,6 @@ class Campaign(object):
     """Campaign object, gathers deployments information from a yaml file"""
 
     def __init__(self, file):
-
         # open yaml information file
         import yaml
 
@@ -467,6 +466,7 @@ class Campaign(object):
             fields=["title"],
             aliases=["depth"],
         )
+
         # colorscale = branca.colormap.linear.Greys_03.scale(levels[-1],levels[0])
         def style_func(feature):
             return {
@@ -570,9 +570,9 @@ class Campaign(object):
         grid: boolean, optional
             Turn grid one (default is True)
         """
-
+        n = len(self.platforms)
         if ax is None:
-            fig = plt.figure(figsize=(15, 5))
+            fig = plt.figure(figsize=(15, n / 4))
             ax = fig.add_subplot(111)
 
         y = 0
@@ -864,7 +864,6 @@ def _process_platforms(platforms):
     pfs = dict()
 
     for p, v in platforms.items():
-
         pf = Platform()
 
         pmeta = dict(label=p)

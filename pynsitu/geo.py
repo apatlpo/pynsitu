@@ -39,7 +39,7 @@ omega_earth = 2.0 * np.pi / 86164.0905
 
 
 def coriolis(lat, signed=True):
-    """returns Coriolis frequency in 1/s"""
+    """returns Coriolis frequency in rad/s"""
     if signed:
         return 2.0 * omega_earth * np.sin(lat * deg2rad)
     else:
@@ -318,14 +318,40 @@ class PdGeoAccessor(GeoAccessor):
             self.project()
         df = compute_velocities(
             self._obj,
-            self._lon,
-            self._lat,
             time,
-            names,
-            centered,
-            fill_startend,
-            distance,
+            names=names,
+            centered=centered,
+            fill_startend=fill_startend,
+            lon_key=self._lon,
+            lat_key=self._lat,
+            distance=distance,
             keep_dt=keep_dt,
+            inplace=inplace,
+        )
+
+        if not inplace:
+            return df
+
+    def compute_dt(
+        self,
+        time="index",
+        fill_startend=True,
+        inplace=False,  # need to return something to give to apply_xy
+    ):
+        """compute dt
+        Parameters
+        ----------
+        time: str, optional
+            Column name. Default is "index", i.e. considers the index
+        fill_startend : boolean, optional
+            fill dataframe start and end (Nan values due to the derivation/centering method) (True by default).
+        inplace : boolean, optional
+            if True add dt to dataset, if False return only a dataframe with time, id (for identification) and computed velocities
+        """
+        df = compute_dt(
+            self._obj,
+            time,
+            fill_startend=fill_startend,
             inplace=inplace,
         )
 
@@ -693,13 +719,17 @@ def _step_trajectory(df, t, x, y, ds, dt_max):
 
 def compute_accelerations(
     df,
-    from_,
-    names,
-    centered_velocity,
-    time,
-    keep_dt,
-    fill_startend,
-    inplace,
+    from_=(
+        "velocities",
+        "velocity_east",
+        "velocity_north",
+    ),
+    names=None,
+    centered_velocity=True,
+    time="index",
+    keep_dt=False,
+    fill_startend=True,
+    inplace=False,
 ):
     """compute acceleration from velocities or position
     Parameters
@@ -711,6 +741,8 @@ def compute_accelerations(
         if key = 'velocities', compute accelaration from velocities
         if key = 'lonlat', compute acceleration from lonlat time series
         if key = 'xy', compute acceleration from xy time series
+        if key = 'xy_spectral' compute from velocities via spectral method
+        if key = 'velocities_spectral' compute from velocities via spectral method
     names :  tuple, optional
         Contains columns names for eastern, northen and norm acceleration
         ("acceleration_east", "acceleration_north", "acceleration") by default
@@ -777,7 +809,10 @@ def compute_accelerations(
         "lonlat",
         "xy",
         "velocities",
-    ], "from_ should be 'lonlat', 'xy', 'velocities'"
+        "xy_spectral",
+        "velocities_spectral",
+    ], "from_ should be 'lonlat', 'xy', 'velocities', 'xy_spectral', 'velocities_spectral'"
+
     if from_[0] == "velocities":
         if centered_velocity:
             w = dt / (dt + dt.shift(-1))
@@ -814,13 +849,24 @@ def compute_accelerations(
     # compute acc from positions in xy
     elif from_[0] == "xy":
         # leverage local projection, less accurate away from central point
-        dxdt = df["x"].diff() / df["dt"]  # u_i = x_i - x_{i-1}
-        dydt = df["y"].diff() / df["dt"]  # v_i = y_i - y_{i-1}
-
+        dxdt = df[from_[1]].diff() / df["dt"]  # u_i = x_i - x_{i-1}
+        dydt = df[from_[2]].diff() / df["dt"]  # v_i = y_i - y_{i-1}
         dt_acc = (dt.shift(-1) + dt) * 0.5
-
         df.loc[:, names[0]] = (dxdt.shift(-1) - dxdt) / dt_acc
         df.loc[:, names[1]] = (dydt.shift(-1) - dydt) / dt_acc
+
+    elif from_[0] == "xy_spectral":
+        df.loc[:, names[0]] = spectral_diff(df[from_[1]], df["dt"][1:], 2)
+        df.loc[:, names[1]] = spectral_diff(df[from_[2]], df["dt"][1:], 2)
+
+    elif from_[0] == "velocities_spectral":
+        df.loc[:, names[0]] = spectral_diff(df[from_[1]], df["dt"][1:], 1)
+        df.loc[:, names[1]] = spectral_diff(df[from_[2]], df["dt"][1:], 1)
+
+    else:
+        assert (
+            False
+        ), "from_ should be 'lonlat', 'xy', 'velocities', 'xy_spectral', 'velocities_spectral'"
 
     # update acceleration norm
     df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
@@ -842,17 +888,16 @@ def compute_accelerations(
 
 def compute_velocities(
     df,
-    lon_key,
-    lat_key,
     time,
     names,
     centered,
     fill_startend,
     distance,
+    lon_key="lon",
+    lat_key="lat",
     keep_dt=False,
     inplace=False,
 ):
-
     """core method to compute velocity from a dataframe
     Parameters
     ----------
@@ -882,9 +927,10 @@ def compute_velocities(
     inplace : boolean, optional
         if True add velocities to dataset, if False return only a dataframe with time, id (for identification) and computed velocities.
     """
-    assert lon_key in df.columns and lat_key in df.columns, (
-        lon_key + " and/or " + lat_key + " not in the dataframe, check names"
-    )
+    if distance == "geoid":
+        assert lon_key in df.columns and lat_key in df.columns, (
+            lon_key + " and/or " + lat_key + " not in the dataframe, check names"
+        )
 
     if names is None:
         names = ("velocity_east", "velocity_north", "velocity")
@@ -931,8 +977,11 @@ def compute_velocities(
         dxdt = pd.Series(dist * np.sin(az12 * deg2rad), index=df.index) / df["dt"]
         dydt = pd.Series(dist * np.cos(az12 * deg2rad), index=df.index) / df["dt"]
     elif distance == "spectral":
-        dxdt = spectral_diff(df["x"], df["dt"][1:], 1, time=t.values)
-        dydt = spectral_diff(df["y"], df["dt"][1:], 1, time=t.values)
+        assert (
+            df.dt[1:] == df.dt[1]
+        ).all(), "time must be regularly sampled to apply spectral method"
+        dxdt = spectral_diff(df["x"], df["dt"][1:], 1)
+        dydt = spectral_diff(df["y"], df["dt"][1:], 1)
         # skips first dt which is in general NaN
         centered = False
     elif distance == "xy":
@@ -974,6 +1023,59 @@ def compute_velocities(
         return df
 
 
+def compute_dt(
+    df,
+    time,
+    fill_startend=True,
+    inplace=False,
+):
+    """core method to compute dt from a dataframe
+    Parameters
+    ----------
+    df : dataframe,
+        dataframe containing trajectories
+    time: str
+        Column name corresponding to time.
+        Can be "index", in which case the index is used
+    fill_startend : boolean
+        fill dataframe start and end (Nan values due to the derivation/centering method) (True by default)
+    inplace : boolean, optional
+        if True add dt to dataset, if False return only a dataframe with time, id (for identification) and computed dt.
+    """
+
+    # drop duplicates
+    if not inplace:
+        df = df[~df.index.duplicated(keep="first")]
+    else:
+        if df.index.duplicated(keep="first").any():
+            df.reset_index(inplace=True)
+            df.drop_duplicates(subset="time", keep="first", inplace=True)
+            df.set_index("time", inplace=True)
+
+    # dt_i = t_i - t_{i-1}
+    if time == "index":
+        t = df.index.to_series()
+        dt = t.diff() / pd.Timedelta("1s")
+        dt.index = df.index  # necessary?
+        df.loc[:, "dt"] = dt
+    else:
+        t = df[time]
+        dt = t.diff() / pd.Timedelta("1s")
+        df.loc[:, "dt"] = dt
+    # is_uniform = df["dt"].dropna().unique().size == 1
+
+    # fill end values
+    if fill_startend:
+        if inplace:
+            df.bfill(inplace=True)
+            df.ffill(inplace=True)
+        else:
+            df = df.bfill().ffill()
+
+    if not inplace:
+        return df
+
+
 def spectral_diff(x, dt, order, dx0=0.0, time=None):
     """Differentiate (order=1, 2) or integrate (order=-1) spectrally a pd.Series presumed uniform
 
@@ -990,6 +1092,8 @@ def spectral_diff(x, dt, order, dx0=0.0, time=None):
     time: np.array
         array of datetimes
     """
+    if time == None:
+        time = x.index.values
     from scipy.fftpack import diff
 
     # from scipy.signal import detrend

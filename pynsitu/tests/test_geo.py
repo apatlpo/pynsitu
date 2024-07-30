@@ -80,7 +80,6 @@ def sample_trajectory_data_steady():
 
 
 def test_compute_velocities(sample_trajectory_data_steady):
-
     df = sample_trajectory_data_steady
     dkwargs = dict(centered=True, names=("vex", "vny", "vxy"), inplace=True)
 
@@ -101,7 +100,6 @@ def test_compute_velocities(sample_trajectory_data_steady):
 
 
 def test_compute_acceleration(sample_trajectory_data_steady):
-
     # from velocities
     # to do ...
     # df = sample_trajectory_data_steady.copy()

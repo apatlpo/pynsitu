@@ -7,8 +7,7 @@ import numpy.testing as npt
 import pynsitu as pyn
 
 
-@pytest.fixture()
-def sample_drifter_data():
+def generate_drifter_data(id="myid"):
     """Create a drifter time series."""
     return generate_drifter_data()
 
@@ -29,6 +28,19 @@ def generate_drifter_data(end="2018-01-15", freq="1H", velocities=False):
     return df
 
 
+@pytest.fixture()
+def sample_drifter_data():
+    return generate_drifter_data()
+
+
+@pytest.fixture()
+def sample_drifter_dataset():
+    return pd.concat(
+        [generate_drifter_data(id=f"id{i}") for i in range(3)],
+        axis=0,
+    )
+
+
 def test_despike_isolated(sample_drifter_data):
     """test the despiking procedure"""
 
@@ -41,23 +53,95 @@ def test_despike_isolated(sample_drifter_data):
     df0.geo.compute_accelerations(inplace=True)
 
     # test with very high threshold, not spikes should be detected
-    df = pyn.drifters.despike_isolated(df0, 1, verbose=False)
+    acc_key = "acceleration_east", "acceleration_north", "acceleration"
+    df = pyn.drifters.despike_isolated(df0, 1, acc_key=acc_key, verbose=False)
     assert df.index.size == Nt, f"{df.index.size, Nt}"
     assert df.columns.equals(df0.columns)
 
     # test with reasonable threshold, several spikes detected
-    df = pyn.drifters.despike_isolated(df0, 1e-4, verbose=False)
+    df = pyn.drifters.despike_isolated(df0, 1e-4, acc_key=acc_key, verbose=False)
     assert df.index.size < Nt, f"{df.index.size, Nt}"
     # output length is 334 agains 337 in input, i.e. 3 data points where deleted
     # this is more than expected, why !?!?
 
 
-def test_resample_smooth(sample_drifter_data):
+def test_variational_smooth(sample_drifter_data):
     """test smooth_resample, just run the code for now"""
-    df = sample_drifter_data.geo.compute_velocities()  # to compute x/y
+    df = sample_drifter_data.geo.compute_velocities(distance="xy")  # to compute x/y
+    df.geo.compute_accelerations(inplace=True)
     t_target = pd.date_range(df.index[0], df.index[-1], freq="30T")
-    df_smooth = pyn.drifters.resample_smooth(df, t_target, 100, 1e-4, 86400.0)
-    assert df_smooth is not None, df_smooth
+    df_smooth = pyn.drifters.variational_smooth(
+        df,
+        t_target,
+        1e-3,
+        70,
+        7.5e-6,
+        0.15 * 86400,
+        geo=False,
+    )
+
+
+@pytest.mark.parametrize("method", ["lowess", "variational", "spydell"])
+def test_smooth_all(sample_drifter_dataset, method):
+    """test smooth_resample, just run the code for now"""
+    df = sample_drifter_dataset
+    df = df.loc[
+        (df.index < pd.Timestamp("2018-01-02"))
+        | (df.index > pd.Timestamp("2018-01-02 12:00:00"))
+    ]
+
+    # t_target = pd.date_range(df.index[0, df.index[-1], freq="30T")
+    t_target = "30min"
+    if method == "lowess":
+        param = pyn.drifters.optimized_parameters_lowess
+    elif method == "variational":
+        param = pyn.drifters.optimized_parameters_var
+    elif method == "spydell":
+        param = pyn.drifters.optimized_parameters_spydell
+
+    df = (
+        df.groupby("id")
+        .apply(_add_xyuvdt_to_L1)
+        .rename(columns={"id": "id1"})
+        .reset_index()
+        .drop(columns=["id1"])
+    )
+
+    dfs = pyn.drifters.smooth_all(
+        df,
+        method,
+        t_target,
+        parameters=param,
+        # import_columns=import_columns,
+        maxgap=3 * 3600,
+        spectral_diff=False,
+        geo=True,
+    )
+
+
+def _add_xyuvdt_to_L1(df):
+    if df.index.name != "time":
+        if df.index.name == None:
+            df = df.set_index("time")
+        else:
+            df = df.reset_index().set_index("time")
+
+    # check time index is sorted
+    if not df.index.is_monotonic_increasing:
+        df.sort_index(inplace=True)
+    df.geo.compute_velocities(
+        keep_dt=True,
+        inplace=True,
+        fill_startend=False,
+    )
+    df.geo.compute_accelerations(
+        inplace=True,
+        fill_startend=False,
+    )
+    proj = df.geo.projection_reference
+    df["lonc"] = proj[0]
+    df["latc"] = proj[1]
+    return df
 
 
 def test_time_window_processing():

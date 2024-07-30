@@ -7,6 +7,7 @@ __all__ = [
     "maps",
     "seawater",
     "tseries",
+    "movies",
     "get_cmap_colors",
 ]
 
@@ -42,7 +43,7 @@ from .geo import deg2rad, rad2deg, g, deg2m
 from pandas import Timedelta
 
 day = Timedelta("1D")
-hour = Timedelta("1H")
+hour = Timedelta("1h")
 second = Timedelta("1s")
 #
 knot = 0.514
@@ -56,6 +57,9 @@ from . import geo
 from . import maps
 from . import seawater
 from . import tseries
+from . import movies
+
+# ------------------------ general utilities -----------------------------
 
 import numpy as np
 
@@ -83,7 +87,13 @@ def get_cmap_colors(Nc, cmap="plasma"):
     return [scalarMap.to_rgba(i) for i in range(Nc)]
 
 
-# utils for vector conversions
+# utils for vector manipulation and conversions
+
+
+def rotate(theta, u, v):
+    """rotate by angle theta (rad)"""
+    cos, sin = np.cos(theta), np.sin(theta)
+    return u * cos + v * sin, -u * sin + v * cos
 
 
 def uv2speedheading(u, v):

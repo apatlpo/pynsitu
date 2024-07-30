@@ -1725,36 +1725,28 @@ def smooth_all(
 def time_window_processing(
     df,
     myfun,
-    columns,
     T,
-    N,
-    spatial_dims=None,
-    Lx=None,
     overlap=0.5,
     id_label="id",
     dt=None,
+    limit=None,
     geo=None,
+    xy=None,
     **myfun_kwargs,
 ):
     """Break each drifter time series into time windows and process each windows
+
+    myfun signature must be myfun(df, **kwargs) and it must return a pandas Series
+    Drop duplicates if a `date` column is present
 
     Parameters
     ----------
         df: Dataframe
             This dataframe represents a drifter time series
-        T: float
-            Length of the time windows, must be in the same units that column "time"
         myfun
             Method that will be applied to each window
-        columns: list of str
-            List of columns of df that will become inputs of myfun
-        N: int
-            Length of myfun outputs
-        spatial_dims: tuple, optional
-            Tuple indicating column labels for spatial coordinates.
-            Guess otherwise
-        Lx: float
-            Domain width for periodical domains in x direction
+        T: float, pd.Timedelta
+            Length of the time windows, must be in the same dtype and units than column "time"
         overlap: float
             Amount of overlap between temporal windows.
             Should be between 0 and 1.
@@ -1764,7 +1756,10 @@ def time_window_processing(
         dt: float, str
             Conform time series to some time step, if string must conform to rule option of
             pandas resample method
-        geo:
+        geo: boolean
+            Turns on geographic processing of spatial coordinates
+        xy: tuple
+            specify x, y spatial coordinates if not geographic
         **myfun_kwargs
             Keyword arguments for myfun
 
@@ -1788,13 +1783,20 @@ def time_window_processing(
         # new, leverage GeoAccessor
         df.geo.project()
         proj = df.geo.projection
-    #
 
-    # drop duplicated values
-    df = df.drop_duplicates(subset="date")
+    if df.index.name == "time":
+        df = df.reset_index()
+
+    # drop duplicated values - requires a date column
+    if "date" in df.columns:
+        df = df.drop_duplicates(subset="date")
     # p = p.where(p.time.diff() != 0).dropna() # duplicates - old
-    #
+
     df = df.sort_values("time")
+    t_is_date = is_datetime(df["time"])
+    if isinstance(T, str):
+        T = pd.Timedelta(T)
+
     # temporal resampling to fill gaps
     if dt != None:
         if isinstance(dt, float):
@@ -1802,54 +1804,70 @@ def time_window_processing(
             tmin, tmax = df.index[0], df.index[-1]
             tmax = tmin + int((tmax - tmin) / dt) * dt
             regular_time = np.arange(tmin, tmax, dt)
-            df = df.reindex(regular_time).interpolate()
+            df = df.reindex(regular_time).interpolate(limit=limit)
         elif isinstance(dt, str):
             # df = df.set_index("date").resample(dt).pad().reset_index()
-            df = df.set_index("date").resample(dt).interpolate().reset_index()
+            c = None
+            if t_is_date:
+                c = "time"
+            elif "date" in df.columns and is_datetime(df["date"]):
+                c = "date"
+            assert (
+                c is not None
+            ), "dt is str but no `time` nor `date` columns are datetime-like"
+            df = df.set_index(c).resample(dt).interpolate(limit=limit)
+            # fill some NaNs
+            df[id_label] = df[id_label].interpolate()
+            if c == "date":
+                df["time"] = df["time"].interpolate()
+            df = df.reset_index()
             # by default converts to days then
             dt = pd.Timedelta(dt) / pd.Timedelta("1D")
-        if geo != None:
-            # old
-            # df = compute_lonlat(
-            #    df,
-            #    lon_key=dim_x,
-            #    lat_key=dim_y,
-            # )
-            # new
+        if geo is not None:
             df.geo.compute_lonlat()
+
     #
     df = df.set_index("time")
     tmin, tmax = df.index[0], df.index[-1]
-    t_is_date = is_datetime(df.index)
     #
-    # need to create an empty dataframe, in case the loop below is empty
-    # get column names from fake output:
-    myfun_out = myfun(*[None for c in columns], N, dt, **myfun_kwargs)
-    size_out = myfun_out.index.size
-    #
-    columns_out = ["x", "y"] + ["id"] + list(myfun_out.index)
-    out = pd.DataFrame({c: [] for c in columns_out})
+    if geo is not None:
+        xy = ["lon", "lat"]
+    elif xy is not None:
+        xy = list(xy)
+    else:
+        xy = []
+    out = None
     t = tmin
     while t + T < tmax:
         #
-        _df = df.loc[t : t + T]
+        _df = df.reset_index()
+        _df = _df.loc[(_df.time >= t) & (_df.time < t + T)].set_index("time")
+        # _df = df.loc[t : t + T] # not robust for floats
         if t_is_date:
             # iloc because pandas include the last date
             _df = _df.iloc[:-1, :]
         # compute average position
-        # x, y = mean_position(_df, Lx=Lx)
-        x, y = proj.xy2lonlat(_df["x"].mean(), _df["y"].mean())
+        if geo:
+            # x, y = mean_position(_df, Lx=Lx)
+            x, y = proj.xy2lonlat(_df["x"].mean(), _df["y"].mean())
+        else:
+            x, y = _df[xy[0]].mean(), _df[xy[1]].mean()
         # apply myfun
-        myfun_out = myfun(*[_df[c] for c in columns], N, dt, **myfun_kwargs)
+        myfun_out = myfun(df, **myfun_kwargs)
+        if out is None:
+            size_out = myfun_out.index.size
+            columns_out = xy + ["id"] + list(myfun_out.index)
+            out = pd.DataFrame({c: [] for c in columns_out})
         # combine with mean position and time
         if myfun_out.index.size == size_out:
             out.loc[t + T / 2.0] = [x, y] + [dr_id] + list(myfun_out)
         t += T * (1 - overlap)
+    out.index = out.index.rename("time")
     return out
 
 
-# should be updated
-def mean_position(df, Lx=None):
+# kept for archives - not used anymore
+def _mean_position(df, Lx=None):
     """Compute the mean position of a dataframe
     !!! to be overhauled !!!
 

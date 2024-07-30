@@ -190,6 +190,27 @@ class PdSeawaterAccessor(SeawaterAccessor):
                 )
             return t, s, c, p
 
+    def reset(self, extra=[]):  # , inplace=True):
+        """delete core seawater variables for update"""
+        # if inplace:
+        df = self._obj.copy()
+        # else:
+        #    df = self._obj.copy()
+        df.drop(
+            columns=[
+                "SA",
+                "CT",
+                "sigma0",
+            ]
+            + extra,
+            errors="ignore",
+            inplace=True,
+        )
+        # recompute SA, PT & co
+        # self._update_SA_PT()
+        df.sw.init()
+        return df
+
     def _update_SA_PT(self):
         """update SA and property, do not overwrite existing values"""
         df = self._obj
@@ -257,7 +278,7 @@ class PdSeawaterAccessor(SeawaterAccessor):
     ):
         """Temporal resampling
         https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.resample.html
-        This is not done inplace
+        This is NOT done inplace
 
         Parameters
         ----------
@@ -403,7 +424,7 @@ def _resample(df, rule, op, interpolate, **kwargs):
     elif op == "median":
         df = df.resample(rule, **kwargs).median()
     if interpolate:
-        df = df.interpolate(method="linear")
+        df = df.interpolate(method="slinear")
     return df
 
 
@@ -443,49 +464,46 @@ def _get_profile(df, depth_min, depth_max, step, speed_threshold, op):
 
 @xr.register_dataset_accessor("sw")
 class XrSeawaterAccessor(SeawaterAccessor):
-    def __init__(self, xarray_obj):
-        self._t, self._s, self._p, self._d = self._validate(xarray_obj)
-        self._obj = xarray_obj
-        self._vdim = None
-        self.update_SA_PT()
-        self.update_eos()  # kind of circular but adds sigma0
-
     def _validate(self, obj):
-        """verify there are columns for temperature, salinity and pressure
-        Check longitude are
-        """
-        # if hasattr(obj, "longitude"):
+        """verify all necessary information is here"""
+
+        # search for lon/lat in columns, as standard attribute, in attrs dict
+        lon_names = ["longitude", "long", "lon"]
+        lat_names = ["latitude", "lat"]
         for k in dir(obj):
-            if k.lower() in ["longitude", "long", "lon"]:
+            if k.lower() in lon_names:
                 self._lon = getattr(obj, k)
-            if k.lower() in ["latitude", "lat"]:
+            if k.lower() in lat_names:
                 self._lat = getattr(obj, k)
         if not hasattr(self, "_lon"):
             raise AttributeError("Did not find an attribute longitude")
         if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
 
-        t, s, p, d = None, None, None, None
-        for c in list(obj.variables):
-            if c.lower() in _t_potential:
-                t = c
-            elif c.lower() in _s_potential:
-                s = c
-            elif c.lower() in _p_potential:
-                p = c
-            elif c.lower() in _d_potential:
-                d = c
-        if not t or not s or (not p and not d):
+        # deal now with actual seawater properties
+        t, s, c, p, d = None, None, None, None, None
+        for v in list(obj.variables):
+            if v.lower() in _t_potential:
+                t = v
+            elif v.lower() in _s_potential:
+                s = v
+            elif v.lower() in _c_potential:
+                c = v
+            elif v.lower() in _p_potential:
+                p = v
+            elif v.lower() in _d_potential:
+                d = v
+        if not t or (not s and not c) or (not p and not d):
             raise AttributeError(
-                "Did not find temperature, salinity and pressure (or depth) columns. "
+                "Did not find temperature, salinity and pressure columns. \n"
                 + "Case insentive options are: "
                 + "/".join(_t_potential)
                 + " , "
                 + "/".join(_s_potential)
+                + " , \n"
+                + "/".join(_c_potential)
                 + " , "
                 + "/".join(_p_potential)
-                + " , "
-                + "/".join(_d_potential)
             )
         else:
             # compute pressure from depth and depth from pressure if need be
@@ -494,10 +512,7 @@ class XrSeawaterAccessor(SeawaterAccessor):
                 obj[p] = gsw.p_from_z(-obj[d], self._lat)
             if not d:
                 obj["depth"] = -gsw.z_from_p(obj[p], self._lat)
-            return t, s, p, d
-
-    def init(self):
-        """automatically generates relevant variables"""
+            return t, s, c, p
 
     def set_vdim(self, vdim):
         """let the user specify which dimension is the depth dimension"""

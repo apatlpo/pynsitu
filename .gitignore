@@ -6,6 +6,7 @@ clean
 *.swp
 *.egg-info/
 .DS_Store
+*.egg
 
 # Byte-compiled / optimized / DLL files
 build/

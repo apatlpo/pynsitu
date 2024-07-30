@@ -737,7 +737,6 @@ def spydell_smooth(
         # initiate lon, lat (needed to compute_acc, even if it is computed from x, y)
         df_out["lon"] = df.lonc.mean()
         df_out["lat"] = df.latc.mean()
-    
 
     # update lon/lat
     if geo:
@@ -746,8 +745,12 @@ def spydell_smooth(
         df_out.geo.compute_lonlat()  # inplace
 
     df_out["X"] = np.sqrt(df_out["x"] ** 2 + df_out["y"] ** 2)
-    compute_acc(df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key)
-    df_out[accelerations_key[2]] = np.sqrt(df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2)
+    compute_acc(
+        df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key
+    )
+    df_out[accelerations_key[2]] = np.sqrt(
+        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    )
 
     return df_out
 

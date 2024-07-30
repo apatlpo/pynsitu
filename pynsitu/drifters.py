@@ -17,7 +17,7 @@ from numba import njit, guvectorize, int32, float64, prange
 #################################################################################
 
 
-def despike_isolated(df, acceleration_threshold, acc_key, verbose=False):
+def despike_isolated(df, acceleration_threshold, acc_key=None, verbose=False):
     """Drops isolated anomalous positions (spikes) in a position time series.
     Anomalous positions are first detected if acceleration exceed the provided
     threshold.
@@ -32,6 +32,8 @@ def despike_isolated(df, acceleration_threshold, acc_key, verbose=False):
         Input dataframe, must contain an `acceleration` column
     acceleration_threshold: float
         Threshold used to detect anomalous values
+    acc_key: tuple, optional
+        Keys/labels/column identifiers for x/y/absolute value of acceleration
     verbose: boolean
         Outputs number of anomalous values detected
         Default is True
@@ -42,6 +44,9 @@ def despike_isolated(df, acceleration_threshold, acc_key, verbose=False):
         Output dataframe with spikes removed.
 
     """
+
+    if acc_key is None:
+        acc_key = "acceleration_east", "acceleration_north", "acceleration"
 
     assert acc_key[2] in df.columns, (
         "'acceleration' should be a column. You may need to leverage the "
@@ -318,7 +323,6 @@ def variational_smooth(
             position_error,
             acceleration_amplitude,
             acceleration_T,
-            geo,
         )
     else:
         print(f"Chunking dataframe into {time_chunk} days chunks")
@@ -337,7 +341,6 @@ def variational_smooth(
                 position_error,
                 acceleration_amplitude,
                 acceleration_T,
-                geo,
             )
             R.append(df_chunk_smooth)
 
@@ -452,7 +455,6 @@ def _variational_smooth_one(
     position_error,
     acceleration_amplitude,
     acceleration_T,
-    geo,
 ):
     """core processing for variational_smooth, process one time window"""
 
@@ -1893,10 +1895,15 @@ def mean_position(df, Lx=None):
 #################################################################################
 # ------------------------ OPTIMIZE METHODS -------------------------------
 
-from synthetic_traj import param_lowess, param_var, param_spydell
-
-optimized_parameters_lowess = param_lowess.copy()
-optimized_parameters_var = param_var.copy()
-optimized_parameters_spydell = param_spydell.copy()
-
+optimized_parameters_lowess = dict(
+    degree=2, iteration=2, T_low_pass=0.45, nb=4, cutoff_low_pass=8
+)
+optimized_parameters_var = dict(
+    acc_cut=1e-3,
+    position_error=70,
+    acceleration_amplitude=7.5e-6,
+    acceleration_T=0.15 * 86400,
+    time_chunk=2,
+)
+optimized_parameters_spydell = dict(nb_pt_mean=7, acc_cut=6e-5)
 maxgap = 3 * 3600

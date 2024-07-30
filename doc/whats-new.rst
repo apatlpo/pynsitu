@@ -11,5 +11,5 @@ v0.0.0 (January 2022)
 Enhancements (to be updated)
 ~~~~~~~~~~~~
 
-- Initi repository. (:issue:`57`)
+- Init repository.
   By `Aurelien Ponte <https://github.com/apatlpo>`_.

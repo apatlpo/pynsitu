@@ -75,6 +75,42 @@ def despike_isolated(df, acceleration_threshold, acc_key, verbose=False):
     df = df.drop(validated_single_spikes)
     return df
 
+def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
+    """Drops isolated anomalous positions (spikes) in a position time series.
+    Anomalous positions are first detected if acceleration exceed the provided
+    threshold.
+    Speed acceleration should have been computed with the pynsitu.geo.GeoAccessor,
+    e.g.: df.geo.compute_velocities(centered=False, acceleration=True)
+
+    Parameters
+    ----------
+    df: `pandas.DataFrame`
+        Input dataframe, must contain an `acceleration` column
+    acceleration_threshold: float
+        Threshold used to detect anomalous values
+    acc_key: tuple, optional
+        Keys/labels/column identifiers for x/y/absolute value of acceleration
+    verbose: boolean
+        Outputs number of anomalous values detected
+        Default is True
+
+    Returns
+    -------
+    df: `pandas.DataFrame`
+        Output dataframe with spikes removed.
+
+    """
+
+    if acc_key is None:
+        acc_key = "acceleration_east", "acceleration_north", "acceleration"
+
+    assert acc_key[2] in df.columns, (
+        "'acceleration' should be a column. You may need to leverage the "
+        + "geo accessor first (pynsitu.geo.GeoAccessor) with "
+        + "`df.geo.compute_velocities(acceleration=True)``"
+    )
+    return df[(df[acc_key[0]] < acceleration_threshold) & (df[acc_key[1]] < acceleration_threshold)]
+
 
 ########################################################
 # -----------FIND AND FILL WITH NAN BIG GAPS------------#
@@ -275,7 +311,8 @@ def variational_smooth(
     
     # despike acceleration
     try:
-        df = despike_isolated(df, acc_cut, acc_cut_key)
+        #df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
+        df = despike_all(df, acc_cut, accelerations_key)
     except:
         assert False, "pb despike"
     # select only x, y

@@ -1954,11 +1954,11 @@ optimized_parameters_lowess = dict(
     degree=2, iteration=2, T_low_pass=0.45, nb=4, cutoff_low_pass=8
 )
 optimized_parameters_var = dict(
-    acc_cut=1e-3,
+    acc_cut=3e-4,
     position_error=70,
     acceleration_amplitude=7.5e-6,
     acceleration_T=0.15 * 86400,
     time_chunk=2,
 )
-optimized_parameters_spydell = dict(nb_pt_mean=7, acc_cut=6e-5)
+optimized_parameters_spydell = dict(nb_pt_mean=7, acc_cut=3e-4)
 maxgap = 3 * 3600

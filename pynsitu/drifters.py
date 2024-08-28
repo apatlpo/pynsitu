@@ -114,10 +114,7 @@ def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
         + "geo accessor first (pynsitu.geo.GeoAccessor) with "
         + "`df.geo.compute_velocities(acceleration=True)``"
     )
-    spikes = pd.concat([df[df[acc_key[0]] > acceleration_threshold], df[df[acc_key[1]] > acceleration_threshold]]).drop_duplicates()
-    # drops spikes
-    df = df.drop(spikes)
-    return df
+    return df[(df[acc_key[0]] < acceleration_threshold) & (df[acc_key[1]] < acceleration_threshold)]
 
 
 ########################################################

@@ -1911,10 +1911,10 @@ def _mean_position(df, Lx=None):
 #################################################################################
 # ------------------------ OPTIMIZE METHODS -------------------------------
 
-from synthetic_traj import param_lowess, param_var, param_spydell
+#from synthetic_traj import param_lowess, param_var, param_spydell
 
-optimized_parameters_lowess = param_lowess.copy()
-optimized_parameters_var = param_var.copy()
-optimized_parameters_spydell = param_spydell.copy()
+#optimized_parameters_lowess = param_lowess.copy()
+#optimized_parameters_var = param_var.copy()
+#optimized_parameters_spydell = param_spydell.copy()
 
-maxgap = 3 * 3600
+#maxgap = 3 * 3600

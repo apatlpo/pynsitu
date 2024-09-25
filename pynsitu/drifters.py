@@ -153,8 +153,18 @@ def despike_pm(df, acceleration_threshold, pm=1, acc_key=None, verbose=False):
     df_ = df_.reset_index()
     spikes = df_[(abs(df_[acc_key[1]]) > acceleration_threshold)|(abs(df_[acc_key[1]]) > acceleration_threshold)].index.values
     spikes = np.unique(np.concatenate([spikes +pm, spikes -pm, spikes]))
+    spikes = [s for s in spikes if (s>=0 & s<=len(df_)-1)]
     
-    spikes = df.iloc[spikes].index
+    #Check for out of range index
+    try :
+        spikes = df.iloc[spikes].index
+    except : 
+        assert False, (spikes, len(df_), len(df))
+    
+    if verbose:
+        print(
+            f"{len(spikes)} spikes dropped out"
+        )
     
     return df.drop(spikes)
     
@@ -280,7 +290,7 @@ def variational_smooth(
     position_error,
     acceleration_amplitude,
     acceleration_T,
-    acc_cut_key=("ax", "ay", "Axy"),
+    acc_cut_key=("au", "av", "Auv"),#one synthetic trajectories, axy more noised, does not correspond to reality
     time_chunk=2,
     import_columns=["id"],
     spectral_diff=True,
@@ -358,9 +368,9 @@ def variational_smooth(
     
     # despike acceleration
     try:
-        #df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
-        #df = despike_all(df, acc_cut, accelerations_key)
-        df = despike_pm(df, acc_cut,pm=1, accelerations_key)
+        #df = despike_isolated(df, acc_cut, acc_cut_key)# spike are made of not only one points
+        #df = despike_all(df, acc_cut, acc_cut_key)
+        df = despike_pm(df, acc_cut, 1, acc_cut_key, verbose=True)
     except:
         assert False, "pb despike"
     # select only x, y
@@ -1814,10 +1824,10 @@ def mean_position(df, Lx=None):
 #################################################################################
 # ------------------------ OPTIMIZE METHOD -------------------------------    
 
-from synthetic_traj import param_lowess, param_var
+#from synthetic_traj import param_lowess, param_var
 
-optimized_parameters_lowess = param_lowess.copy()
-optimized_parameters_var = param_var.copy()
-optimized_parameters_var.update(acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"))
+#optimized_parameters_lowess = param_lowess.copy()
+#optimized_parameters_var = param_var.copy()
+#optimized_parameters_var.update(acc_cut_key=("acceleration_east", "acceleration_north", "acceleration"))
 
-maxgap = 3*3600
+#maxgap = 3*3600

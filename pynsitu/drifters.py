@@ -80,6 +80,7 @@ def despike_isolated(df, acceleration_threshold, acc_key=None, verbose=False):
     df = df.drop(validated_single_spikes)
     return df
 
+
 def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
     """Drops isolated anomalous positions (spikes) in a position time series.
     Anomalous positions are first detected if acceleration exceed the provided
@@ -114,7 +115,10 @@ def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
         + "geo accessor first (pynsitu.geo.GeoAccessor) with "
         + "`df.geo.compute_velocities(acceleration=True)``"
     )
-    return df[(df[acc_key[0]] < acceleration_threshold) & (df[acc_key[1]] < acceleration_threshold)]
+    return df[
+        (df[acc_key[0]] < acceleration_threshold)
+        & (df[acc_key[1]] < acceleration_threshold)
+    ]
 
 
 ########################################################
@@ -328,7 +332,7 @@ def variational_smooth(
 
     # despike acceleration
     try:
-        #df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
+        # df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
         df = despike_all(df, acc_cut, accelerations_key)
     except:
         assert False, "pb despike"

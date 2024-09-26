@@ -20,3 +20,4 @@ conda build -c pyviz -c conda-forge -c apatlpo --output-folder ${HOME}/Code/whee
 
 - run `convert_upload.sh` to produce and upload packages
 
+- create release on github

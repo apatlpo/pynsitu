@@ -9,14 +9,14 @@
 
 # launch the script after anaconda login
 library="pynsitu"
-tag="0.0.1"
+tag="0.0.2"
 #in_directory="${HOME}/.miniconda3/envs/condabuild/conda-bld/osx-64/"
 in_directory="${HOME}/Code/wheels/osx-64/"
 out_directory="${HOME}/Code/wheels/"
 
 ### all python and platforms
 
-for python in 39 310
+for python in 39 310 311
 do
     # starting platform
     platform="osx-64"

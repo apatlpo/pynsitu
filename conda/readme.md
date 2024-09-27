@@ -3,8 +3,8 @@ Sylvie's gists in order to create pypi and conda packages are found [here](https
 
 In order to release a new version of the library:
 
-- update tag in `conda/meta.yaml`
-- update tag in `convert_upload.sh`
+- update tag in `conda/meta.yaml` and `convert_upload.sh`
+- if need be, update python versions in `setup.cfg`, `conda_build_config.yaml`, `convert_upload.sh`
 - install `conda-build` in `base` environment:
 
 ```

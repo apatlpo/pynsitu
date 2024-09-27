@@ -11,7 +11,7 @@ dependencies:
   - ipython
   - jupyter
   - matplotlib
-  #- numba
+  - numba
   - pandoc
   - pip
   - pip:

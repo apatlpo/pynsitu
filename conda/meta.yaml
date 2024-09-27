@@ -16,6 +16,7 @@ requirements:
     - python {{ python }} 
   run:
     - python
+    - numpy<=2.0 # imposed by numba
     - xarray
     - geopandas
     - cartopy

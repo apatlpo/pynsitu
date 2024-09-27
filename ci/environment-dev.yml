@@ -4,6 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - numpy<=2.0 # imposed by numba
   - xarray
   - geopandas
   - hvplot

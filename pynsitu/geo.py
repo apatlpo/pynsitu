@@ -818,12 +818,17 @@ def compute_accelerations(
             w = dt / (dt + dt.shift(-1))
             ae = df.loc[:, from_[1]].diff() / dt
             an = df.loc[:, from_[2]].diff() / dt
+            normv = np.sqrt(df.loc[:, from_[1]]**2+ df.loc[:, from_[2]]**2)
+            a = normv.diff() / dt
             df.loc[:, names[0]] = ae + (ae.shift(-1) - ae) * w
             df.loc[:, names[1]] = an + (an.shift(-1) - an) * w
+            df.loc[:, names[2]] = a + (a.shift(-1) - a) * w
         else:
             dt_acc = (dt.shift(-1) + dt) * 0.5
+            normv = np.sqrt(df[from_[1]]**2+ df[from_[2]]**2)
             df.loc[:, names[0]] = (df[from_[1]].shift(-1) - df[from_[1]]) / dt_acc
             df.loc[:, names[1]] = (df[from_[2]].shift(-1) - df[from_[2]]) / dt_acc
+            df.loc[:, names[2]] = (normv.shift(-1) - normv) / dt_acc
 
     # compute acc from positions in lonlat
     elif from_[0] == "lonlat":
@@ -838,38 +843,41 @@ def compute_accelerations(
         )
 
         dt_acc = (dt.shift(-1) + dt) * 0.5
-
-        df.loc[:, names[0]] = (
-            df_v["velocity_east"].shift(-1) - df_v["velocity_east"]
-        ) / dt_acc
-        df.loc[:, names[1]] = (
-            df_v["velocity_north"].shift(-1) - df_v["velocity_north"]
-        ) / dt_acc
+        normv = np.sqrt(df_v["velocity_east"]**2 + df_v["velocity_north"]**2)
+        df.loc[:, names[0]] = (df_v["velocity_east"].shift(-1) - df_v["velocity_east"]) / dt_acc
+        df.loc[:, names[1]] = (df_v["velocity_north"].shift(-1) - df_v["velocity_north"]) / dt_acc
+        df.loc[:, names[2]] = (normv.shift(-1) - normv) / dt_acc
 
     # compute acc from positions in xy
     elif from_[0] == "xy":
         # leverage local projection, less accurate away from central point
+        normX = np.sqrt(df[from_[1]]**2+ df[from_[2]]**2)
         dxdt = df[from_[1]].diff() / df["dt"]  # u_i = x_i - x_{i-1}
         dydt = df[from_[2]].diff() / df["dt"]  # v_i = y_i - y_{i-1}
+        dXdt = normX.diff() / df["dt"]
         dt_acc = (dt.shift(-1) + dt) * 0.5
         df.loc[:, names[0]] = (dxdt.shift(-1) - dxdt) / dt_acc
         df.loc[:, names[1]] = (dydt.shift(-1) - dydt) / dt_acc
+        df.loc[:, names[2]] = (dXdt.shift(-1) - dXdt) / dt_acc
 
     elif from_[0] == "xy_spectral":
+        normX = np.sqrt(df[from_[1]]**2+ df[from_[2]]**2)
         df.loc[:, names[0]] = spectral_diff(df[from_[1]], df["dt"][1:], 2)
         df.loc[:, names[1]] = spectral_diff(df[from_[2]], df["dt"][1:], 2)
+        df.loc[:, names[2]] = spectral_diff(normX, df["dt"][1:], 2)
 
     elif from_[0] == "velocities_spectral":
+        normv = np.sqrt(df[from_[1]]**2+ df[from_[2]]**2)
         df.loc[:, names[0]] = spectral_diff(df[from_[1]], df["dt"][1:], 1)
         df.loc[:, names[1]] = spectral_diff(df[from_[2]], df["dt"][1:], 1)
-
+        df.loc[:, names[2]] = spectral_diff(normv, df["dt"][1:], 2)
     else:
         assert (
             False
         ), "from_ should be 'lonlat', 'xy', 'velocities', 'xy_spectral', 'velocities_spectral'"
 
-    # update acceleration norm
-    df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
+    # update acceleration norm (modified to be done for each method, including sign)
+    #df.loc[:, names[2]] = np.sqrt(df[names[0]] ** 2 + df[names[1]] ** 2)
 
     if not keep_dt:
         del df["dt"]

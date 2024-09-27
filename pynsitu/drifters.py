@@ -114,7 +114,7 @@ def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
         + "geo accessor first (pynsitu.geo.GeoAccessor) with "
         + "`df.geo.compute_velocities(acceleration=True)``"
     )
-    return df[(df[acc_key[0]] < acceleration_threshold) & (df[acc_key[1]] < acceleration_threshold)]
+    return df[(abs(df[acc_key[0]]) < acceleration_threshold) | (abs(df[acc_key[1]]) < acceleration_threshold)]
 
 def despike_pm(df, acceleration_threshold, pm=1, acc_key=None, verbose=False):
     """Drops anomalous positions (spikes) in a position time series.
@@ -517,9 +517,9 @@ def variational_smooth(
         df_out.geo.compute_lonlat()  # inplace
 
     df_out["X"] = np.sqrt(df_out["x"] ** 2 + df_out["y"] ** 2)
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    #df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    #)
 
     # import columns/info ex: id or time
     if import_columns:
@@ -833,9 +833,9 @@ def spydell_smooth(
     compute_acc(
         df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key
     )
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    #df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    #)
 
     return df_out
 
@@ -1159,9 +1159,9 @@ def lowess_smooth(
                 "time": t_target,
             }
         )
-        df_out[accelerations_key[2]] = np.sqrt(
-            df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-        )
+        #df_out[accelerations_key[2]] = np.sqrt(
+        #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+        #)
 
     df_out = df_out.set_index("time")
 
@@ -1199,9 +1199,10 @@ def lowess_smooth(
     df_out[velocities_key[2]] = np.sqrt(
         df_out[velocities_key[0]] ** 2 + df_out[velocities_key[1]] ** 2
     )
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    
+    #df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    #)
 
     return df_out
 

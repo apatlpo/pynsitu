@@ -14,5 +14,3 @@ dependencies:
   - gsw
   - pytide
   - pip
-  - pip:
-    - geojsoncontour

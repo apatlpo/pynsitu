@@ -26,7 +26,6 @@ requirements:
     - gsw
     - pytide
     - pip
-    - geojsoncontour
 
 about:
   home: https://github.com/apatlpo/pynsitu

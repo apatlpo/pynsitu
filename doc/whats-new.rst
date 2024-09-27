@@ -8,7 +8,7 @@ What's New
 v0.0.2 (September 2024)
 ----------------------
 
-- Arbitrary milestone, drops python 3.9 support.
+- Arbitrary milestone, drops python 3.9 support, geojsoncontour.
   By `Aurelien Ponte <https://github.com/apatlpo>`_.
 
 

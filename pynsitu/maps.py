@@ -425,7 +425,10 @@ def store_bathy_contours(
     levels=[0, 100, 500, 1000, 2000, 3000],
     **kwargs,
 ):
-    """Store bathymetric contours as a geojson
+    """
+    !!! need reimplemation, see following link for insight: https://github.com/metno/pyaerocom/issues/952
+
+    Store bathymetric contours as a geojson
     The geojson may be used for folium plots
     """
 
@@ -436,7 +439,8 @@ def store_bathy_contours(
     contours = depth.plot.contour(levels=levels, cmap="gray_r")
 
     # Convert matplotlib contour to geojson
-    from geojsoncontour import contour_to_geojson
+    # from geojsoncontour import contour_to_geojson
+    contour_to_geojson = None
 
     contours_geojson = contour_to_geojson(
         contour=contours,

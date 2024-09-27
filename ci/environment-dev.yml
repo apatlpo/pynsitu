@@ -17,7 +17,6 @@ dependencies:
   - pytest-cov
   - pip
   - pip:
-    - geojsoncontour
     - codecov
     - pytest-xdist
     - black

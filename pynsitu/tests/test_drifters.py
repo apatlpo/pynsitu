@@ -7,21 +7,21 @@ import numpy.testing as npt
 import pynsitu as pyn
 
 
-def generate_drifter_data(id="myid"):
-    """Create a drifter time series."""
-    return generate_drifter_data()
+#def generate_drifter_data(id="myid"):
+#    """Create a drifter time series."""
+#    return generate_drifter_data()
 
 
-def generate_drifter_data(end="2018-01-15", freq="1H", velocities=False):
+def generate_drifter_data(id="myid", end="2018-01-15", freq="1H", velocities=False):
     """Create a drifter time series."""
     time = pd.date_range(start="2018-01-01", end=end, freq=freq)
     v = 0.1  # m/s approx
     scale = 111e3
-    time_scale = pd.Timedelta("10D")
+    time_scale = pd.Timedelta("10d")
     lon = v * np.cos(2 * np.pi * ((time - time[0]) / time_scale)) / scale
     lat = v * np.sin(2 * np.pi * ((time - time[0]) / time_scale)) / scale
     df = pd.DataFrame(dict(lon=lon, lat=lat, time=time))
-    df["id"] = "myid"
+    df["id"] = id
     df = df.set_index("time")
     if velocities:
         df.geo.compute_velocities(inplace=True)
@@ -148,9 +148,9 @@ def test_time_window_processing():
     """test the despiking procedure"""
 
     # common parameters
-    T = pd.Timedelta("10D")
+    T = pd.Timedelta("10d")
     dummy_value = 1.0
-    gkwargs = dict(end="2018-03-01", velocities=True, freq="1H")
+    gkwargs = dict(end="2018-03-01", velocities=True, freq="1h")
 
     def _processing(df, dummy=None):
         return pd.Series(dict(u=df["velocity_east"].mean(skipna=True) * 0.0 + dummy))
@@ -181,7 +181,7 @@ def test_time_window_processing():
     assert out["u"].mean(skipna=True) == dummy_value, out
 
     # time is float
-    time_unit = pd.Timedelta("1D")
+    time_unit = pd.Timedelta("1d")
     df.index = (df.index - df.index[0]) / time_unit
     Tf = T / time_unit
     out = pyn.drifters.time_window_processing(

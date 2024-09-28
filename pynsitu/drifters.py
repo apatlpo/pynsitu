@@ -406,7 +406,7 @@ def variational_smooth(
         t_target = pd.DatetimeIndex(t_target)
 
     # Time series length in days
-    T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
+    T = (t_target[-1] - t_target[0]) / pd.Timedelta("1d")
 
     if not time_chunk or T < time_chunk * 1.1:
         df_out = _variational_smooth_one(
@@ -421,7 +421,7 @@ def variational_smooth(
         # divide target timeline into chunks
         D = _divide_into_time_chunks(t_target, time_chunk, overlap=0.3)
         # split computation
-        delta = pd.Timedelta("3H")
+        delta = pd.Timedelta("3h")
         R = []
         for time in D:
             df_chunk = df.loc[
@@ -590,7 +590,7 @@ def _divide_into_time_chunks(time, T, overlap=0.1):
         Size of time chunks in days
 
     """
-    Td = pd.Timedelta("1D") * T
+    Td = pd.Timedelta("1d") * T
 
     # assumes time is the index
     t_first = time[0]
@@ -637,7 +637,7 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
     I[i, j] = 1 - w
 
     # second order derivative
-    one_second = pd.Timedelta("1S")
+    one_second = pd.Timedelta("1s")
     dt2 = (dt / one_second) ** 2
     D2 = diags(
         [1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)
@@ -1915,7 +1915,7 @@ def time_window_processing(
                 df["time"] = df["time"].interpolate()
             df = df.reset_index()
             # by default converts to days then
-            dt = pd.Timedelta(dt) / pd.Timedelta("1D")
+            dt = pd.Timedelta(dt) / pd.Timedelta("1d")
         if geo is not None:
             df.geo.compute_lonlat()
 

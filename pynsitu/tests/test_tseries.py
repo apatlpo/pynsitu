@@ -17,7 +17,7 @@ import pynsitu as pyn
 ## -------------- method building used for testing
 
 # default timeseries
-tdefault = dict(start="01-01-2018", end="15-01-2018", freq="1H")
+tdefault = dict(start="01-01-2018", end="15-01-2018", freq="1h")
 
 
 @pytest.fixture()
@@ -31,11 +31,11 @@ def generate_time_series(
 ):
     """Create a drifter time series."""
     time = pd.date_range(**tdefault)
-    time_scale = pd.Timedelta("1D")
+    time_scale = pd.Timedelta("1d")
     if time_units == "timedelta":
         time = time - time[0]
     elif time_units == "numeric":
-        time = (time - time[0]) / pd.Timedelta("1H")
+        time = (time - time[0]) / pd.Timedelta("1h")
         time_scale = 1.0
     if not uniform:
         nt = time.size
@@ -102,7 +102,7 @@ def test_resample_uniform():
 def test_resample_centered():
     # resample_centered(self, freq):
     df = generate_time_series(uniform=False)
-    df.ts.resample_centered("2H")
+    df.ts.resample_centered("2h")
 
 
 ## -------------- spectral calculations

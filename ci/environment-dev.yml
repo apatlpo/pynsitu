@@ -1,9 +1,10 @@
-name: pynsitu_dev
+name: insitu_dev
 channels:
   - pyviz
   - conda-forge
   - defaults
 dependencies:
+  - python=3.10
   - numpy<=2.0 # imposed by numba
   - xarray
   - geopandas

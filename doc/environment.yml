@@ -1,4 +1,4 @@
-name: pynsitu
+name: insitu
 channels:
   - conda-forge
   - defaults

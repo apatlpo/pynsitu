@@ -20,11 +20,11 @@ Environments
 The easiest way to start developing pynsitu pull requests,
 is to install one of the conda environments provided in the `ci folder <https://github.com/apatlpo/pynsitu/tree/main/ci>`_::
 
-    conda env create python=3.10 -f ci/environment-dev.yml
+    conda env create -f ci/environment-dev.yml
 
 Activate the environment with::
 
-    conda activate pynsitu_dev
+    conda activate insitu_dev
 
 Code Formatting
 ^^^^^^^^^^^^^^^

@@ -7,7 +7,7 @@ import numpy.testing as npt
 import pynsitu as pyn
 
 
-#def generate_drifter_data(id="myid"):
+# def generate_drifter_data(id="myid"):
 #    """Create a drifter time series."""
 #    return generate_drifter_data()
 

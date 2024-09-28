@@ -107,6 +107,7 @@ def test_resample_centered():
 
 ## -------------- spectral calculations
 
+
 # welch calculation
 @pytest.mark.parametrize("kind", ["pd_dataframe", "xr_dataset", "xr_dask"])
 @pytest.mark.parametrize("time_units", ["datetime", "timedelta", "numeric"])

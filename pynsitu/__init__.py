@@ -7,6 +7,7 @@ __all__ = [
     "maps",
     "seawater",
     "tseries",
+    "tides",
     "movies",
     "get_cmap_colors",
 ]
@@ -42,8 +43,9 @@ from .geo import deg2rad, rad2deg, g, deg2m
 #
 from pandas import Timedelta
 
-day = Timedelta("1D")
+day = Timedelta("1d")
 hour = Timedelta("1h")
+minute = Timedelta("1min")
 second = Timedelta("1s")
 #
 knot = 0.514
@@ -57,6 +59,7 @@ from . import geo
 from . import maps
 from . import seawater
 from . import tseries
+from . import tides
 from . import movies
 
 # ------------------------ general utilities -----------------------------

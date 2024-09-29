@@ -85,6 +85,8 @@ def plot_map(
     coastline: str, optional
         True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
     rivers: boolean, optional
+    **kwargs:
+        passed to the plot of the da variable
     """
 
     #

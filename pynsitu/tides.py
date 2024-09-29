@@ -11,6 +11,7 @@ try:
     # generates tons of warnings, turn off till we actually need pyTMD
     # pass
 except:
+    pyTMD = None
     print("Warning: could not import pyTMD")
 
 

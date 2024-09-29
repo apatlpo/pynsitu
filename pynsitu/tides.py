@@ -88,6 +88,8 @@ def load_constituents_properties(c=None):
     alpha: load love number of tidal constituent
     species: spherical harmonic dependence of quadrupole potential
     """
+    if pyTMD is None:
+        return
     if c is None:
         c = default_fes_constituents
     if isinstance(c, list):

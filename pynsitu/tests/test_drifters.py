@@ -108,6 +108,7 @@ def test_smooth_all(sample_drifter_dataset, method):
         .set_index("id")
     )
 
+    assert False, df.columns
     dfs = pyn.drifters.smooth_all(
         df,
         method,

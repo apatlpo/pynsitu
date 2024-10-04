@@ -99,7 +99,7 @@ def test_smooth_all(sample_drifter_dataset, method):
     elif method == "spydell":
         param = pyn.drifters.optimized_parameters_spydell
 
-    assert False, df.columns
+    assert "id" in df.columns, "id not in columns"
     df = (
         df.groupby("id")
         .apply(_add_xyuvdt_to_L1)

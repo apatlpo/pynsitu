@@ -12,7 +12,7 @@ import pynsitu as pyn
 #    return generate_drifter_data()
 
 
-def generate_drifter_data(id="myid", end="2018-01-15", freq="1H", velocities=False):
+def generate_drifter_data(id="myid", end="2018-01-15", freq="1h", velocities=False):
     """Create a drifter time series."""
     time = pd.date_range(start="2018-01-01", end=end, freq=freq)
     v = 0.1  # m/s approx
@@ -105,6 +105,7 @@ def test_smooth_all(sample_drifter_dataset, method):
         .rename(columns={"id": "id1"})
         .reset_index()
         .drop(columns=["id1"])
+        .set_index("id")
     )
 
     dfs = pyn.drifters.smooth_all(

@@ -1,5 +1,7 @@
-import numpy as np
-import pandas as pd
+from matplotlib.gridspec import GridSpec
+
+#import numpy as np
+#import pandas as pd
 
 # import xarray as xr
 # import cftime
@@ -14,16 +16,14 @@ import numpy.testing as npt
 import pynsitu as pyn
 
 
-@pytest.fixture()
-def sample_drifter_data():
-    """Create a drifter time series."""
-    time = pd.date_range(start="2018-01-01", end="2018-01-15", freq="1h")
-    v = 0.1  # m/s approx
-    scale = 111e3
-    time_scale = pd.Timedelta("10d")
-    lon = v * np.cos(2 * np.pi * ((time - time[0]) / time_scale)) / scale
-    lat = v * np.sin(2 * np.pi * ((time - time[0]) / time_scale)) / scale
-    df = pd.DataFrame(dict(lon=lon, lat=lat, time=time))
-    df["id"] = "myid"
-    df = df.set_index("time")
-    return df
+
+def test_plot_map():
+
+    # most basic map plot
+    fig, ax, _ = pyn.maps.plot_map()
+
+    # specify extent
+    fig, ax, _ = pyn.maps.plot_map(extent=[0, 10, 40, 50])
+
+    # Gridspec
+

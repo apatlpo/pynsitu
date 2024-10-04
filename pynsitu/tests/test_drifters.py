@@ -101,15 +101,18 @@ def test_smooth_all(sample_drifter_dataset, method):
 
     assert "id" in df.columns, "id not in columns"
     df = (
-        df.groupby("id")
+        df.groupby("id", as_index=True)
         .apply(_add_xyuvdt_to_L1)
-        .rename(columns={"id": "id1"})
-        .reset_index()
-        .drop(columns=["id1"])
-        .set_index("id")
+        .drop(columns=["id"], errors="ignore")
     )
+    #assert False, df.reset_index().columns
+    #(df    .rename(columns={"id": "id1"})
+    #    .reset_index()
+    #    .drop(columns=["id1"])
+    #    .set_index("id")
+    #)
 
-    assert False, df.columns
+    #assert False, df.columns
     dfs = pyn.drifters.smooth_all(
         df,
         method,

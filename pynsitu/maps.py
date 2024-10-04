@@ -123,12 +123,12 @@ def plot_map(
         proj = projection
     if ax is None:
         ax = fig.add_subplot(111, projection=proj)
-    elif type(ax)==SubplotSpec:
+    elif type(ax) == SubplotSpec:
         assert fig is not None, "fig is needed for gridspec axes"
         ax = fig.add_subplot(ax, projection=proj)
 
     if extent is not None:
-        #assert hasattr(ax, "set_extent"), "ax is not a cartopy axis"
+        # assert hasattr(ax, "set_extent"), "ax is not a cartopy axis"
         ax.set_extent(extent)
 
     if tile is not None:

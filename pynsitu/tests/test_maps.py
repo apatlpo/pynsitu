@@ -1,7 +1,7 @@
 from matplotlib.gridspec import GridSpec
 
-#import numpy as np
-#import pandas as pd
+# import numpy as np
+# import pandas as pd
 
 # import xarray as xr
 # import cftime
@@ -16,7 +16,6 @@ import numpy.testing as npt
 import pynsitu as pyn
 
 
-
 def test_plot_map():
 
     # most basic map plot
@@ -26,4 +25,3 @@ def test_plot_map():
     fig, ax, _ = pyn.maps.plot_map(extent=[0, 10, 40, 50])
 
     # Gridspec
-

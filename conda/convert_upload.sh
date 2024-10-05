@@ -16,7 +16,7 @@ out_directory="${HOME}/Code/wheels/"
 
 ### all python and platforms
 
-for python in 39 310 311
+for python in 38 39 310
 do
     # starting platform
     platform="osx-64"

@@ -80,6 +80,7 @@ def despike_isolated(df, acceleration_threshold, acc_key=None, verbose=False):
     df = df.drop(validated_single_spikes)
     return df
 
+
 def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
     """Drops isolated anomalous positions (spikes) in a position time series.
     Anomalous positions are first detected if acceleration exceed the provided
@@ -114,7 +115,60 @@ def despike_all(df, acceleration_threshold, acc_key=None, verbose=False):
         + "geo accessor first (pynsitu.geo.GeoAccessor) with "
         + "`df.geo.compute_velocities(acceleration=True)``"
     )
-    return df[(df[acc_key[0]] < acceleration_threshold) & (df[acc_key[1]] < acceleration_threshold)]
+    return df[
+        (abs(df[acc_key[0]]) < acceleration_threshold)
+        | (abs(df[acc_key[1]]) < acceleration_threshold)
+    ]
+
+
+def despike_pm(df, acceleration_threshold, pm=1, acc_key=None, verbose=False):
+    """Drops anomalous positions (spikes) in a position time series.
+    Anomalous positions are first detected if acceleration exceed the provided
+    threshold.
+    The pm points before and after are also removed
+    Speed acceleration should have been computed with the pynsitu.geo.GeoAccessor,
+    e.g.: df.geo.compute_velocities(centered=False, acceleration=True)
+
+    Parameters
+    ----------
+    df: `pandas.DataFrame`
+        Input dataframe, must contain an `acceleration` column
+    acceleration_threshold: float
+        Threshold used to detect anomalous values
+    pm : int
+        number of point before and after to remove
+    acc_key: tuple, optional
+        Keys/labels/column identifiers for x/y/absolute value of acceleration
+    verbose: boolean
+        Outputs number of anomalous values detected
+        Default is True
+
+    Returns
+    -------
+    df: `pandas.DataFrame`
+        Output dataframe with spikes removed.
+
+    """
+
+    if acc_key is None:
+        acc_key = "acceleration_east", "acceleration_north", "acceleration"
+
+    assert acc_key[2] in df.columns, (
+        "'acceleration' should be a column. You may need to leverage the "
+        + "geo accessor first (pynsitu.geo.GeoAccessor) with "
+        + "`df.geo.compute_velocities(acceleration=True)``"
+    )
+    df_ = df.copy()
+    df_ = df_.reset_index()
+    spikes = df_[
+        (abs(df_[acc_key[1]]) > acceleration_threshold)
+        | (abs(df_[acc_key[1]]) > acceleration_threshold)
+    ].index.values
+    spikes = np.unique(np.concatenate([spikes + pm, spikes - pm, spikes]))
+
+    spikes = df.iloc[spikes].index
+
+    return df.drop(spikes)
 
 
 ########################################################
@@ -328,8 +382,9 @@ def variational_smooth(
 
     # despike acceleration
     try:
-        #df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
-        df = despike_all(df, acc_cut, accelerations_key)
+        # df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
+        # df = despike_all(df, acc_cut, accelerations_key)# spike before and after often are also not ok
+        df = despike_pm(df, acc_cut, pm=1, acc_key=accelerations_key)
     except:
         assert False, "pb despike"
 
@@ -351,7 +406,7 @@ def variational_smooth(
         t_target = pd.DatetimeIndex(t_target)
 
     # Time series length in days
-    T = (t_target[-1] - t_target[0]) / pd.Timedelta("1D")
+    T = (t_target[-1] - t_target[0]) / pd.Timedelta("1d")
 
     if not time_chunk or T < time_chunk * 1.1:
         df_out = _variational_smooth_one(
@@ -366,7 +421,7 @@ def variational_smooth(
         # divide target timeline into chunks
         D = _divide_into_time_chunks(t_target, time_chunk, overlap=0.3)
         # split computation
-        delta = pd.Timedelta("3H")
+        delta = pd.Timedelta("3h")
         R = []
         for time in D:
             df_chunk = df.loc[
@@ -471,9 +526,9 @@ def variational_smooth(
         df_out.geo.compute_lonlat()  # inplace
 
     df_out["X"] = np.sqrt(df_out["x"] ** 2 + df_out["y"] ** 2)
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    # df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    # )
 
     # import columns/info ex: id or time
     if import_columns:
@@ -535,7 +590,7 @@ def _divide_into_time_chunks(time, T, overlap=0.1):
         Size of time chunks in days
 
     """
-    Td = pd.Timedelta("1D") * T
+    Td = pd.Timedelta("1d") * T
 
     # assumes time is the index
     t_first = time[0]
@@ -582,7 +637,7 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
     I[i, j] = 1 - w
 
     # second order derivative
-    one_second = pd.Timedelta("1S")
+    one_second = pd.Timedelta("1s")
     dt2 = (dt / one_second) ** 2
     D2 = diags(
         [1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)
@@ -787,9 +842,9 @@ def spydell_smooth(
     compute_acc(
         df_out, geo, spectral_diff, "spydell", velocities_key, accelerations_key
     )
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+    # df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    # )
 
     return df_out
 
@@ -1113,9 +1168,9 @@ def lowess_smooth(
                 "time": t_target,
             }
         )
-        df_out[accelerations_key[2]] = np.sqrt(
-            df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-        )
+        # df_out[accelerations_key[2]] = np.sqrt(
+        #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+        # )
 
     df_out = df_out.set_index("time")
 
@@ -1153,9 +1208,10 @@ def lowess_smooth(
     df_out[velocities_key[2]] = np.sqrt(
         df_out[velocities_key[0]] ** 2 + df_out[velocities_key[1]] ** 2
     )
-    df_out[accelerations_key[2]] = np.sqrt(
-        df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
-    )
+
+    # df_out[accelerations_key[2]] = np.sqrt(
+    #    df_out[accelerations_key[0]] ** 2 + df_out[accelerations_key[1]] ** 2
+    # )
 
     return df_out
 
@@ -1859,7 +1915,7 @@ def time_window_processing(
                 df["time"] = df["time"].interpolate()
             df = df.reset_index()
             # by default converts to days then
-            dt = pd.Timedelta(dt) / pd.Timedelta("1D")
+            dt = pd.Timedelta(dt) / pd.Timedelta("1d")
         if geo is not None:
             df.geo.compute_lonlat()
 

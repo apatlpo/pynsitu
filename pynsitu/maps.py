@@ -4,6 +4,7 @@ import xarray as xr
 import numpy as np
 
 from matplotlib import pyplot as plt
+from matplotlib.gridspec import SubplotSpec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 try:
@@ -63,8 +64,9 @@ def plot_map(
         Figure handle, create one if not passed
     figsize: tuple, optional
         Figure size, e.g. (10,5)
-    ax: matplotlib.axes.Axes, optional
-        Axis handle
+    ax: matplotlib.axes.Axes, matplotlib.gridspec.SubplotSpec, optional
+        Axis handle (needs to generated with cartopy projection)
+        or gridspec handle as generated from GridSpec
     colorbar: boolean, optional
         add colorbar (default is True)
     colorbar_kwargs: dict, optional
@@ -85,12 +87,14 @@ def plot_map(
     coastline: str, optional
         True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
     rivers: boolean, optional
+    **kwargs:
+        passed to the plot of the da variable
     """
 
     #
     if figsize is None:
         figsize = (10, 5)
-    if fig is None:
+    if ax is None and fig is None:
         fig = plt.figure(figsize=figsize)
     proj, extent = get_projection(extent)
     if tile is not None:
@@ -119,8 +123,12 @@ def plot_map(
         proj = projection
     if ax is None:
         ax = fig.add_subplot(111, projection=proj)
+    elif type(ax) == SubplotSpec:
+        assert fig is not None, "fig is needed for gridspec axes"
+        ax = fig.add_subplot(ax, projection=proj)
 
     if extent is not None:
+        # assert hasattr(ax, "set_extent"), "ax is not a cartopy axis"
         ax.set_extent(extent)
 
     if tile is not None:
@@ -425,7 +433,10 @@ def store_bathy_contours(
     levels=[0, 100, 500, 1000, 2000, 3000],
     **kwargs,
 ):
-    """Store bathymetric contours as a geojson
+    """
+    !!! need reimplemation, see following link for insight: https://github.com/metno/pyaerocom/issues/952
+
+    Store bathymetric contours as a geojson
     The geojson may be used for folium plots
     """
 
@@ -436,7 +447,8 @@ def store_bathy_contours(
     contours = depth.plot.contour(levels=levels, cmap="gray_r")
 
     # Convert matplotlib contour to geojson
-    from geojsoncontour import contour_to_geojson
+    # from geojsoncontour import contour_to_geojson
+    contour_to_geojson = None
 
     contours_geojson = contour_to_geojson(
         contour=contours,

@@ -1,9 +1,13 @@
+{% set version = "0.0.2" %}
+
 package:
   name: "pynsitu"
-  version: "0.0.1"
+  version: {{ version }}
 
 source:
-  git_url: https://github.com/apatlpo/pynsitu
+  path: ../
+#  git_url: https://github.com/apatlpo/pynsitu
+#  git_depth: 1 # (Defaults to -1/not shallow)
 
 build:
   number: 0
@@ -16,6 +20,7 @@ requirements:
     - python {{ python }} 
   run:
     - python
+    - numpy<=2.0 # imposed by numba
     - xarray
     - geopandas
     - cartopy
@@ -26,7 +31,6 @@ requirements:
     - gsw
     - pytide
     - pip
-    - geojsoncontour
 
 about:
   home: https://github.com/apatlpo/pynsitu

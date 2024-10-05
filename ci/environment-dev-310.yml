@@ -1,20 +1,25 @@
-name: insitu
+name: insitu_dev
 channels:
   - pyviz
   - conda-forge
   - defaults
 dependencies:
+  - python=3.10
   - numpy<=2.0 # imposed by numba
   - numba # required for python 3.11
   - xarray
   - geopandas
-  - cartopy
   - hvplot
   - geoviews
+  - cartopy
   - folium
   - cmocean
   - gsw
   - pytide
-#  - pyTMD
-#  - utide
+  - pytest
+  - pytest-cov
   - pip
+  - pip:
+    - codecov
+    - pytest-xdist
+    - black

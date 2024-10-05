@@ -436,7 +436,7 @@ class TimeSeriesAccessor(TimeSeries):
             # detrend
             slope, mean = (np.NaN,) * 2
             if dkwargs["detrend"]:
-                t = (df[self._time] - _time_origin) / pd.Timedelta("1H")
+                t = (df[self._time] - _time_origin) / pd.Timedelta("1h")
                 trend = np.polyfit(t, df[col], 1)
                 slope, mean = trend
                 x = x - np.poly1d(trend)(t)
@@ -536,7 +536,7 @@ class TimeSeriesAccessor(TimeSeries):
             # add trend back
             slope, mean = h.trend_slope, h.trend_mean
             if not np.isnan(mean):
-                t = (out[self._time] - _time_origin) / pd.Timedelta("1H")
+                t = (out[self._time] - _time_origin) / pd.Timedelta("1h")
                 trend = [slope, mean]
                 out[label] += np.poly1d(trend)(t)
                 out = out.set_index(self._time)
@@ -724,7 +724,7 @@ class XrTimeSeriesAccessor(TimeSeries):
         method: str, optional
             Spectral method, e.g. welch, ...
         unit: str, pd.Timedelta, optional
-            time unit to use for frequencies (e.g. "1T", "1D")
+            time unit to use for frequencies (e.g. "1min", "1d")
         include: str, list, optional
             variables to compute the spectrum on
         ignore: str, list, optional

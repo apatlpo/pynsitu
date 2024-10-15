@@ -551,6 +551,7 @@ class Campaign(object):
         ax=None,
         grid=True,
         exclude=[],
+        figsize=None,
     ):
         """Plot the campaign deployment timeline
 
@@ -569,10 +570,16 @@ class Campaign(object):
         ax: pyplot.axes, optional
         grid: boolean, optional
             Turn grid one (default is True)
+        exclude: list, optional
+            list of platforms or deployments to exclude
+        figsize: tuple, optional
+            enforce the size of the output figure
         """
         n = len(self.platforms)
         if ax is None:
-            fig = plt.figure(figsize=(15, n / 4))
+            if figsize is None:
+                figsize = (15, n / 4)
+            fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(111)
 
         y = 0

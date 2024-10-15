@@ -3,13 +3,13 @@ Sylvie's gists in order to create pypi and conda packages are found [here](https
 
 In order to release a new version of the library:
 
-- update tag in `conda/meta.yaml`
-- update tag in `convert_upload.sh`
-- install `conda-build` in `base` environment:
+- update tag in `conda/meta.yaml`, `conda/convert_upload.sh`, `doc/conf.py`
+- if need be, update python versions in `setup.cfg`, `conda/conda_build_config.yaml`, `conda/convert_upload.sh`, `github/ci.yaml`
+- install libraries required to compile and export packages in `base` environment:
 
 ```
 conda activate base
-conda install conda-build anaconda-client
+conda install conda-build conda-verify anaconda-client
 ```
 
 - run in library root dir (`pynsitu/`):
@@ -20,3 +20,4 @@ conda build -c pyviz -c conda-forge -c apatlpo --output-folder ${HOME}/Code/whee
 
 - run `convert_upload.sh` to produce and upload packages
 
+- create release on github

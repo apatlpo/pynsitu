@@ -33,6 +33,7 @@ Documentation
 
    example_events
    example_tseries
+   example_tides
    example_drifters
    example_movie
 

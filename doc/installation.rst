@@ -13,17 +13,17 @@ Install dependencies via conda
 
 Directly from Anaconda_ (along with pynsitu, recommended)::
 
-    $ conda install pynsitu -c apatlpo
+    $ conda install pynsitu -c apatlpo -c pyviz -c conda-forge 
 
-Or directly in a dedicated environment along with other packages, for instance:
+Or directly in a dedicated environment (labelled `insitu`) along with other packages, for instance:
 
-    $ conda create -n insitu -c apatlpo python=3.10 pynsitu jupyterlab seaborn pyTMD xrft xhistogram
+    $ conda create -n insitu -c apatlpo -c pyviz -c conda-forge python=3.10 pynsitu jupyterlab seaborn pyTMD utide xrft xhistogram
 
 Or more manually without pynsitu, see next section::
 
     $ git clone https://github.com/apatlpo/pynsitu.git
     $ cd pynsitu
-    $ conda create -n pynsitu python=3.10
+    $ conda create -n insitu python=3.10
     $ conda env update -n insitu -f ci/environment.yml
 
 Install pynsitu from GitHub repo
@@ -33,6 +33,10 @@ To get the latest version::
     $ git clone https://github.com/apatlpo/pynsitu.git
     $ cd pynsitu
     $ python setup.py install .
+
+Or to be able to update the library:
+
+    $ pip install -e .
 
 Developers can track source code changes by::
 

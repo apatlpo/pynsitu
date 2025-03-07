@@ -241,6 +241,8 @@ def load_tidal_amplitudes_np(lon, lat, vtype, constituents=None):
     """Load tidal amplitudes"""
 
     model_directory, scale = get_dirs_scale(vtype)
+    if vtype == "load":
+        vtype = "z"
 
     # flatten arrays
     ll_shape = lon.shape
@@ -348,6 +350,8 @@ def load_raw_tidal_amplitudes(vtype, lon=None, lat=None, constituents=None):
     # add vtype suffix
     if vtype == "z":
         ds = ds.rename(amplitude="sea_level_amplitude", phase="sea_level_phase")
+    elif vtype == "load":
+        ds = ds.rename(amplitude="load_amplitude", phase="load_phase")
     elif vtype == "u":
         ds = ds.rename(Ua="zonal_current_amplitude", Ug="zonal_current_phase")
     elif vtype == "v":
@@ -441,6 +445,8 @@ def tidal_prediction_np(lon, lat, time, vtype, constituents, minor, split):
     """
 
     model_directory, scale = get_dirs_scale(vtype)
+    if vtype == "load":
+        vtype = "z"
 
     model_files = [c + ".nc" for c in constituents]
     for i in range(len(model_files)):
@@ -477,6 +483,7 @@ def tidal_prediction_np(lon, lat, time, vtype, constituents, minor, split):
     #    scale=scale,
     #    compressed=GZIP,
     # )
+
     _constituents = pyTMD.io.FES.read_constants(
         model_files, type=vtype, version=TIDE_MODEL, compressed=GZIP
     )
@@ -557,8 +564,13 @@ def get_dirs_scale(vtype):
         tide_dir = os.path.join(
             fes_dir, "fes2014_elevations_and_load/fes2014b_elevations"
         )
-        # model_directory = os.path.join(tide_dir,'fes2014','ocean_tide')
         model_directory = os.path.join(tide_dir, "ocean_tide")
+        scale = 1 / 100
+    elif vtype == "load":
+        tide_dir = os.path.join(
+            fes_dir, "fes2014_elevations_and_load/fes2014a_loadtide"
+        )
+        model_directory = os.path.join(tide_dir, "load_tide")
         scale = 1 / 100
     elif vtype == "u":
         tide_dir = os.path.join(fes_dir, "fes2014a_currents")

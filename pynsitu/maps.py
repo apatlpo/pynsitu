@@ -83,7 +83,7 @@ def plot_map(
     bathy_fill: boolean, optional
         Fill bathymetry with colors
     land: boolean, str, optional
-        Add land (default is True)
+        Add land
     coastline: str, optional
         True, ["10m", "50m", "110m"], ["c", "l", "i", "h", "f"] or path to coast shapefile
     rivers: boolean, optional

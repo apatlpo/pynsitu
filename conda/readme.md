@@ -1,3 +1,58 @@
+## new notes
+
+References:
+
+- Create pypi package: [Pypi doc](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+
+- [conda-forge doc](https://conda-forge.org/docs/maintainer/adding_pkgs/)
+
+- [pyOpenSci doc](https://github.com/pyOpenSci/pyosPackage/blob/main/pyproject.toml)
+
+
+
+1. Create a conda environment to build
+
+```
+conda create -n pypi pip
+conda activate pypi
+pip install "black[jupyter]"
+python3 -m pip install --upgrade build
+```
+
+2. Package files
+
+```
+python3 -m build
+```
+
+3. Push to TestPyPI for testing:
+
+```
+python3 -m pip install --upgrade twine
+# push to test
+python3 -m twine upload --repository testpypi dist/*
+```
+
+4. Upload to pyPI (note that this is definitive):
+   
+```
+python3 -m twine upload dist/*
+```
+
+To create a simple python environment for testing:
+```
+conda create -n test python=3.11
+conda activate test
+# inside pynsitu dir:
+pip install -e .
+```
+Such test may be useful to check dependencies are correctly installed.
+
+
+---
+
+## old notes
+
 
 Sylvie's gists in order to create pypi and conda packages are found [here](https://gist.github.com/slgentil)
 
@@ -21,3 +76,4 @@ conda build -c pyviz -c conda-forge -c apatlpo --output-folder ${HOME}/Code/whee
 - run `convert_upload.sh` to produce and upload packages
 
 - create release on github
+

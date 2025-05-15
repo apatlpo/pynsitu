@@ -10,6 +10,7 @@ clean
 
 # Byte-compiled / optimized / DLL files
 build/
+dist/
 __pycache__/
 *.py[cod]
 *.so

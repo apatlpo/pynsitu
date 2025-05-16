@@ -49,6 +49,20 @@ pip install -e .
 Such test may be useful to check dependencies are correctly installed.
 
 
+```
+conda create --name grayskull
+conda activate grayskull
+conda install -c conda-forge grayskull
+cd tmp
+grayskull pypi --strict-conda-forge pynsitu
+cd ..
+git clone https://github.com/apatlpo/staged-recipes.git
+cd staged-recipes/recipes
+mkdir pynsitu
+cp ????meta.yaml pynsitu
+```
+
+
 ---
 
 ## old notes

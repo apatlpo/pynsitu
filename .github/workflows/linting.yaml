@@ -23,4 +23,4 @@ jobs:
         run: pip install black==22.3.0
 
       - name: Check code style with black
-        run: black --check pynsitu
+        run: black --check src/pynsitu

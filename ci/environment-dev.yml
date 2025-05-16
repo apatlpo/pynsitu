@@ -3,8 +3,8 @@ channels:
   - pyviz
   - conda-forge
 dependencies:
-  - numpy<=2.0 # imposed by numba
-  - numba # required for python 3.11
+  - numpy
+  - numba
   - xarray
   - dask
   - geopandas

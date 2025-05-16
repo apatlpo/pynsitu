@@ -34,7 +34,7 @@ fail in the CI if not properly formatted.
 
 All conda environments contain black and you can reformat code using::
 
-    black pynsitu
+    black src/pynsitu
 
 `pre-commit <https://pre-commit.com/>`_ provides an automated way to reformat your code
 prior to each commit. Simply install pre-commit::
@@ -52,7 +52,7 @@ Running the test suite
 
 The tests can then be run directly inside your Git clone (without having to install pynsitu) by typing::
 
-    pytest pynsitu
+    pytest src/pynsitu
 
 ..
     (To be made function or updated) How to release a new version of pynsitu (for maintainers only)

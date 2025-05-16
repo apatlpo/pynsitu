@@ -13,7 +13,7 @@ dependencies:
   - folium
   - cmocean
   - gsw
-  - pytide
+  - pyfes
 #  - pyTMD
 #  - utide
   - pip

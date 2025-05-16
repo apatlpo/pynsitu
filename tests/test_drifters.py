@@ -47,8 +47,8 @@ def test_despike_isolated(sample_drifter_data):
     # add a spike
     Nt = sample_drifter_data.index.size
     df = sample_drifter_data
-    df["lon"][10] = df["lon"][10] + 1e-1
-    df["lat"][10] = df["lat"][10] + 1e-1
+    df["lon"].iloc[10] = df["lon"].iloc[10] + 1e-1
+    df["lat"].iloc[10] = df["lat"].iloc[10] + 1e-1
     df0 = df.geo.compute_velocities()
     df0.geo.compute_accelerations(inplace=True)
 
@@ -69,7 +69,7 @@ def test_variational_smooth(sample_drifter_data):
     """test smooth_resample, just run the code for now"""
     df = sample_drifter_data.geo.compute_velocities(distance="xy")  # to compute x/y
     df.geo.compute_accelerations(inplace=True)
-    t_target = pd.date_range(df.index[0], df.index[-1], freq="30T")
+    t_target = pd.date_range(df.index[0], df.index[-1], freq="30min")
     df_smooth = pyn.drifters.variational_smooth(
         df,
         t_target,
@@ -175,7 +175,7 @@ def test_time_window_processing():
     # generate a longer time series
     df = generate_drifter_data(**gkwargs)
     # add gaps
-    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.NaN
+    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.nan
 
     # base case
     out = pyn.drifters.time_window_processing(
@@ -226,7 +226,7 @@ def test_time_window_processing():
 
     # with time as datetime
     df = generate_drifter_data(**gkwargs)
-    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.NaN
+    df.loc["2018-02-01":"2018-02-15", "velocity_east"] = np.nan
     df = df.loc[
         (df.index < pd.Timestamp("2018-02-01"))
         | (df.index > pd.Timestamp("2018-02-10"))

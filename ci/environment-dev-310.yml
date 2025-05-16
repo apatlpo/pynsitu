@@ -15,7 +15,7 @@ dependencies:
   - folium
   - cmocean
   - gsw
-  - pytide
+  - pyfes
   - pytest
   - pytest-cov
   - pip

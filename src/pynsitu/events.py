@@ -47,7 +47,6 @@ class Event(object):
         # time information
         self.time = pd.to_datetime(
             l[0] + " " + l[1],
-            infer_datetime_format=True,
         )
 
         # lon, lat data

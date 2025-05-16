@@ -990,7 +990,7 @@ def compute_velocities(
         dydt = pd.Series(dist * np.cos(az12 * deg2rad), index=df.index) / df["dt"]
     elif distance == "spectral":
         assert (
-            df.dt[1:] == df.dt[1]
+            df.dt.iloc[2:] == df.dt.iloc[1]
         ).all(), "time must be regularly sampled to apply spectral method"
         dxdt = spectral_diff(df["x"], df["dt"][1:], 1)
         dydt = spectral_diff(df["y"], df["dt"][1:], 1)

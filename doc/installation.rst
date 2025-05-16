@@ -6,9 +6,9 @@ Installation
 The quickest way
 ----------------
 
-pynsitu is compatible both with Python 3. The major dependencies are xarray_ and pandas_.
+pynsitu is compatible both with Python 3.
 
-Install dependencies via conda
+Install dependencies via conda !XX! Disregard for now
 -----------------------------
 
 Directly from Anaconda_ (along with pynsitu, recommended)::
@@ -26,23 +26,15 @@ Or more manually without pynsitu, see next section::
     $ conda create -n insitu python=3.10
     $ conda env update -n insitu -f ci/environment.yml
 
-Install pynsitu from GitHub repo
+Install pynsitu from GitHub repo !! Preferred
 -----------------------------
 To get the latest version::
 
+    $ conda create -n insitu -c conda-forge python=3.10 jupyterlab seaborn pyTMD utide pyfes xrft xhistogram
     $ git clone https://github.com/apatlpo/pynsitu.git
     $ cd pynsitu
-    $ python setup.py install .
-
-Or to be able to update the library:
-
     $ pip install -e .
 
-Developers can track source code changes by::
-
-    $ git clone https://github.com/apatlpo/pynsitu.git
-    $ cd pynsitu
-    $ python setup.py develop .
 
 .. _xarray: http://xarray.pydata.org
 .. _pandas: https://pandas.pydata.org

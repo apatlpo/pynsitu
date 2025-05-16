@@ -57,7 +57,7 @@ def generate_trajectory_data_periodic(
 @pytest.fixture()
 def sample_trajectory_data_steady():
     """Create a trajectory time series with a steady flow."""
-    freq = "1H"
+    freq = "1h"
     time = pd.date_range(start="2018-01-01", end="2018-01-15", freq=freq)
 
     ve, vn = 0.1, 0.1

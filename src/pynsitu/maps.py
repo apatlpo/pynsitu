@@ -173,7 +173,7 @@ def plot_map(
                 ax=ax,
                 transform=crs,
                 levels=bathy_levels,
-                lw=1,
+                linewidths=1,
                 colors="0.5",
             )
             ax.clabel(CS, CS.levels, inline=False, fontsize=10)

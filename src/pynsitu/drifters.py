@@ -534,7 +534,7 @@ def variational_smooth(
     if import_columns:
         for column in import_columns:
             try:
-                df_out[column] = df[column][0]
+                df_out[column] = df[column].iloc[0]
             except:
                 assert False, df.columns
 
@@ -1908,11 +1908,12 @@ def time_window_processing(
             assert (
                 c is not None
             ), "dt is str but no `time` nor `date` columns are datetime-like"
-            df = df.set_index(c).resample(dt).interpolate(limit=limit)
+            # df = df.set_index(c).resample(dt).interpolate(limit=limit)
+            df = _resample(df.set_index(c), dt, limit=limit)
             # fill some NaNs
-            df[id_label] = df[id_label].interpolate()
-            if c == "date":
-                df["time"] = df["time"].interpolate()
+            # df[id_label] = df[id_label].interpolate()
+            # if c == "date":
+            #    df["time"] = df["time"].interpolate()
             df = df.reset_index()
             # by default converts to days then
             dt = pd.Timedelta(dt) / pd.Timedelta("1d")
@@ -2001,6 +2002,19 @@ def _mean_position(df, Lx=None):
             x = df[dim_x].mean()
         y = df[dim_y].mean()
         return x, y
+
+
+def _resample(df, dt, **kwargs):
+    """resample with object dtypes"""
+    # .interpolate(limit=limit)
+    # https://github.com/pandas-dev/pandas/issues/53631
+    # interpolate number columns
+    df_numbers = df.select_dtypes(include=["number"]).resample(dt).interpolate(**kwargs)
+    # and forward-fill non-number columns
+    df_non_numbers = df.select_dtypes(exclude=["number"]).resample(dt).ffill()
+    # combine the two
+    df = pd.concat([df_numbers, df_non_numbers], axis=1)
+    return df
 
 
 #################################################################################

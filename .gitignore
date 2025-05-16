@@ -1,5 +1,4 @@
-pynsitu/old
-pynsitu/_version.py
+src/pynsitu/_version.py
 
 clean~
 clean

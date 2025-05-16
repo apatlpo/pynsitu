@@ -2,7 +2,6 @@ name: insitu_dev
 channels:
   - pyviz
   - conda-forge
-  - defaults
 dependencies:
   - numpy<=2.0 # imposed by numba
   - numba # required for python 3.11

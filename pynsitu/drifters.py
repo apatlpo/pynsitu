@@ -375,7 +375,7 @@ def variational_smooth(
     try:
         #df = despike_isolated(df, acc_cut, accelerations_key)# spike are made of not only one points
         #df = despike_all(df, acc_cut, accelerations_key)# spike before and after often are also not ok
-        df = despike_pm(df, acc_cut,pm=1, accelerations_key)
+        df = despike_pm(df, acc_cut,pm=1, acc_key = accelerations_key)
     except:
         assert False, "pb despike"
 

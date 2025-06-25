@@ -1635,11 +1635,11 @@ def smooth_all(
                 optional compute acceleration
     Return : interpolated dataframe with x, y, u, v, ax-ay computed from xy, au-av computed from u-v, +norms, id, platform with index time
     """
-    dfa = df.groupby("id").apply(
+    dfa = df.groupby("id", group_keys = False).apply(
         smooth, method, t_target, maxgap, parameters, import_columns, spectral_diff, geo
     )
     dfa = (
-        dfa.reset_index(level="id", drop=True)
+        dfa#.reset_index(level="id", drop=True)
         .reset_index()
         .rename(columns={"index": "time"})
         .set_index("time")

@@ -1257,8 +1257,8 @@ def posteriori_low_pass_uv(df, T=20, cutoff=4, import_columns=["id"]):
     def msy_difference(y_0):
         return ((df.y - y_0 - y_cum) ** 2).mean()
 
-    x_0 = minimize(msx_difference, df.x[0]).x
-    y_0 = minimize(msy_difference, df.y[0]).x
+    x_0 = minimize(msx_difference, df.x.iloc[0]).x
+    y_0 = minimize(msy_difference, df.y.iloc[0]).x
 
     dff["x"] = x_0 + x_cum
     dff["y"] = y_0 + y_cum
@@ -1348,8 +1348,8 @@ def low_pass_(df, T=1, cutoff=11.5):
     def msy_difference(y_0):
         return ((df.y - y_0 - y_cum) ** 2).mean()
 
-    x_0 = minimize(msx_difference, df.x[0]).x
-    y_0 = minimize(msy_difference, df.y[0]).x
+    x_0 = minimize(msx_difference, df.x.iloc[0]).x
+    y_0 = minimize(msy_difference, df.y.iloc[0]).x
 
     dff["x"] = x_0 + x_cum
     dff["y"] = y_0 + y_cum

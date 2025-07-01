@@ -403,7 +403,7 @@ def variational_smooth(
         # divide target timeline into chunks
         D = _divide_into_time_chunks(t_target, time_chunk, overlap=0.3)
         # split computation
-        delta = pd.Timedelta("3H")
+        delta = pd.Timedelta("3h")
         R = []
         for time in D:
             df_chunk = df.loc[
@@ -614,7 +614,7 @@ def _get_smoothing_operators(t_target, t, position_error, acceleration_R):
     I[i, j] = 1 - w
 
     # second order derivative
-    one_second = pd.Timedelta("1S")
+    one_second = pd.Timedelta("1s")
     dt2 = (dt / one_second) ** 2
     D2 = diags(
         [1 / dt2, -2 / dt2, 1 / dt2], [-1, 0, 1], shape=(Nt, Nt)

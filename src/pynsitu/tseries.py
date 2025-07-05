@@ -926,7 +926,7 @@ def compute_spectrum_pd(
                 # required because alpha cannot be passed to periodogram
                 mkwargs["alpha"] = 0.5
 
-        f, E = _scipy_spectra_wrapper(v, **mkwargs)
+        f, E = _scipy_spectra_wrapper(v.values, **mkwargs)
     # elif method == "mtspec":
     #    from mtspec import mtspec
     #    lE, f = mtspec(

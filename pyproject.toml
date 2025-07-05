@@ -7,8 +7,8 @@ build-backend = "hatchling.build"
 [project]
 name = "pynsitu"
 #dynamic = ["version"] # not working with local install
-version = "0.0.2" # Delete this line and add the line below to tell hatch to use dynamic versioning
-requires-python = ">=3.9"
+version = "0.0.3" # Delete this line and add the line below to tell hatch to use dynamic versioning
+requires-python = ">=3.10"
 description = "Oceanographic in situ data analysis with pandas/xarray"
 readme = "README.md"
 authors = [
@@ -28,9 +28,9 @@ classifiers = [
 license = "MIT"
 keywords = ["oceanography", "analysis", "in situ"]
 dependencies = [
-    "numpy<1.27",    # imposed by numba
+    "numpy",
     "scipy",
-    "numba",         # required for python 3.11
+    "numba",
     "xarray",
     "dask",
     "geopandas",

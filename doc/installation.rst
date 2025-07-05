@@ -8,34 +8,22 @@ The quickest way
 
 pynsitu is compatible both with Python 3.
 
-Install dependencies via conda !XX! Disregard for now
------------------------------
+Install with pip
+----------------
+To install latest release via pip, run in an adequate python environment::
 
-Directly from Anaconda_ (along with pynsitu, recommended)::
+    $ python -m pip install pynsitu
 
-    $ conda install pynsitu -c apatlpo -c pyviz -c conda-forge 
-
-Or directly in a dedicated environment (labelled `insitu`) along with other packages, for instance:
-
-    $ conda create -n insitu -c apatlpo -c pyviz -c conda-forge python=3.10 pynsitu jupyterlab seaborn pyTMD utide xrft xhistogram
-
-Or more manually without pynsitu, see next section::
+Create conda environment and install latest code
+------------------------------------------------
+First clone the pynsitu repository and create a conda environment::
 
     $ git clone https://github.com/apatlpo/pynsitu.git
     $ cd pynsitu
     $ conda create -n insitu python=3.10
     $ conda env update -n insitu -f ci/environment.yml
+    $ conda activate insitu
 
-Install pynsitu from GitHub repo !! Preferred
------------------------------
-To get the latest version::
-
-    $ conda create -n insitu -c conda-forge python=3.10 jupyterlab seaborn pyTMD utide pyfes xrft xhistogram
-    $ git clone https://github.com/apatlpo/pynsitu.git
-    $ cd pynsitu
-    $ pip install -e .
-
-
-.. _xarray: http://xarray.pydata.org
-.. _pandas: https://pandas.pydata.org
-.. _Anaconda: https://www.continuum.io/downloads
+Then install pynsitu library in the environment::
+    
+    $ python -m pip install pynsitu

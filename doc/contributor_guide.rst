@@ -36,23 +36,12 @@ All conda environments contain black and you can reformat code using::
 
     black src/pynsitu
 
-`pre-commit <https://pre-commit.com/>`_ provides an automated way to reformat your code
-prior to each commit. Simply install pre-commit::
-
-    pip install pre-commit
-
-and install it in the pynsitu root directory with::
-
-    pre-commit install
-
-and your code will be properly formatted before each commit.
-
 Running the test suite
 ^^^^^^^^^^^^^^^^^^^^^^
 
 The tests can then be run directly inside your Git clone (without having to install pynsitu) by typing::
 
-    pytest src/pynsitu
+    pytest tests
 
 ..
     (To be made function or updated) How to release a new version of pynsitu (for maintainers only)

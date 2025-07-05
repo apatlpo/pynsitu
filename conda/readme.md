@@ -1,4 +1,4 @@
-## new notes
+## new notes for building and pushing package to pypi
 
 References:
 
@@ -9,6 +9,10 @@ References:
 - [pyOpenSci doc](https://github.com/pyOpenSci/pyosPackage/blob/main/pyproject.toml)
 
 
+0. Make sure modifications are final: version has been updated and code is formated with black:
+   -  version number updated across all files: `doc/conf.py`, `pyproject.toml`
+   -  info appended to `doc/whats-new.rst`
+   -  make sure all tests pass by running in adequate environment: `pytest tests` see contributor guide
 
 1. Create a conda environment to build
 
@@ -17,6 +21,7 @@ conda create -n pypi pip
 conda activate pypi
 pip install "black[jupyter]"
 python3 -m pip install --upgrade build
+python3 -m pip install --upgrade twine
 ```
 
 2. Package files
@@ -28,7 +33,6 @@ python3 -m build
 3. Push to TestPyPI for testing:
 
 ```
-python3 -m pip install --upgrade twine
 # push to test
 python3 -m twine upload --repository testpypi dist/*
 ```
@@ -60,9 +64,11 @@ git clone https://github.com/apatlpo/staged-recipes.git
 cd staged-recipes/recipes
 mkdir pynsitu
 cp ????meta.yaml pynsitu
+
+curl -sL https://github.com/apatlpo/pynsitu/archive/v0.0.2.tar.gz | openssl sha256
 ```
 
-
+<!---
 ---
 
 ## old notes
@@ -90,4 +96,4 @@ conda build -c pyviz -c conda-forge -c apatlpo --output-folder ${HOME}/Code/whee
 - run `convert_upload.sh` to produce and upload packages
 
 - create release on github
-
+-->

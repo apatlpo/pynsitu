@@ -3,6 +3,14 @@
 What's New
 ==========
 
+.. _whats-new.0.0.3:
+
+v0.0.3 (June 2025)
+----------------------
+
+- Update python minimum version to 3.10, refresh package build/upload to pypi.
+  By `Aurelien Ponte <https://github.com/apatlpo>`_.
+
 .. _whats-new.0.0.2:
 
 v0.0.2 (September 2024)

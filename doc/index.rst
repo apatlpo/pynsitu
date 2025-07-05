@@ -1,5 +1,4 @@
-.. pynsitu documentation master file, created
-   from xrft doc on 29/10/2022
+.. pynsitu documentation master file
 
 
 pynsitu: Oceanographic In Situ Data analysis
@@ -33,6 +32,7 @@ Documentation
 
    example_events
    example_tseries
+   example_tides
    example_drifters
    example_movie
 

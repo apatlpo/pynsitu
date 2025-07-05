@@ -519,7 +519,7 @@ class XrSeawaterAccessor(SeawaterAccessor):
         self._vdim = vdim
         # self._odims = [d for d in self._obj[self._t].dims if d!=vdim]
 
-    def update_SA_PT(self):
+    def _update_SA_PT(self):
         ds = self._obj
         t, s, p = ds[self._t], ds[self._s], ds[self._p]
         ds["SA"] = gsw.SA_from_SP(s, p, self._lon, self._lat)
@@ -602,9 +602,13 @@ class XrSeawaterAccessor(SeawaterAccessor):
         N2, p_mid = gsw.Nsquared(ds.SA, ds.CT, p, lat=self._lat, axis=0)
         # dp = (ds.DEPTH.isel(**{vdim: 1}) - ds.DEPTH.isel(**{vdim: 0}))
         # sign_dp = int(np.sign(dp).median().values)
-        ds["depth_mid"] = (("depth_mid"), p_mid)
+        d_mid = self._vdim + "_mid"
+        ds = ds.assign_coords(
+            p_mid=((d_mid,), p_mid),
+            z_mid=((d_mid,), -p_mid),  # approx here
+        )
         # ds = ds.assign_coords(z_mid=-ds.DEPTH_MID)
-        ds["N2"] = (("depth_mid"), N2)
+        ds["N2"] = ((d_mid,), N2)
         return ds.N2
 
 

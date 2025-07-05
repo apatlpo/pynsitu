@@ -1,5 +1,4 @@
-pynsitu/old
-pynsitu/_version.py
+src/pynsitu/_version.py
 
 clean~
 clean
@@ -10,6 +9,7 @@ clean
 
 # Byte-compiled / optimized / DLL files
 build/
+dist/
 __pycache__/
 *.py[cod]
 *.so

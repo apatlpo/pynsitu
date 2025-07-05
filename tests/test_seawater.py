@@ -18,8 +18,8 @@ def sample_sw_data():
 def generate_sw_data(lonlat, kind="pd_dataframe"):
     """Create data containing seawater properties"""
 
-    time = pd.date_range(start="2018-01-01", end="2018-01-15", freq="1H")
-    time_scale = pd.Timedelta("10D")
+    time = pd.date_range(start="2018-01-01", end="2018-01-15", freq="1h")
+    time_scale = pd.Timedelta("10d")
     unit_oscillation = np.cos(2 * np.pi * ((time - time[0]) / time_scale))
     unit_trend = (time - time[0]) / (time[-1] - time[0])
     t = 10 + 5 * unit_oscillation
@@ -67,10 +67,10 @@ def test_sw_resample(sample_sw_data):
     """test seawater dataframe update_eos method, just run the code for now"""
     #
     df = sample_sw_data.copy().set_index("time")
-    df.sw.resample("1D", interpolate=False, op="mean")
+    df.sw.resample("1d", interpolate=False, op="mean")
     #
     df = sample_sw_data.copy().set_index("time")
-    df.sw.resample("1D", interpolate=True, op="median")
+    df.sw.resample("1d", interpolate=True, op="median")
     #
     df = sample_sw_data.copy().set_index("time")
-    df.sw.resample("1T", interpolate=True, op="mean")
+    df.sw.resample("1min", interpolate=True, op="mean")

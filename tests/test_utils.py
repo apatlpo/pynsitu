@@ -1,6 +1,7 @@
 """
 Test utility functions of pynsitu
 """
+
 import pytest
 import numpy as np
 import pandas as pd

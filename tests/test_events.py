@@ -86,7 +86,7 @@ def test_deployment_instantiation():
 def test_campaign_instantiation():
     """test creation of campaign object"""
 
-    yaml = "pynsitu/tests/campaign.yaml"
+    yaml = "tests/campaign.yaml"
     cp = pyn.Campaign(yaml)
 
     # str

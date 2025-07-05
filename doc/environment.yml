@@ -1,15 +1,19 @@
-name: pynsitu
+name: insitu
 channels:
   - conda-forge
   - defaults
 dependencies:
   - python=3.10
+  - numpy
+  - numba
+  - scipy
   - xarray
   - numpydoc
   - sphinx
   - ipython
   - jupyter
   - matplotlib
+  - numba
   - pandoc
   - pip
   - pip:

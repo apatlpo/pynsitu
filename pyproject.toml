@@ -1,13 +1,85 @@
 # pyproject.toml
 [build-system]
-requires = [
-    "setuptools>=45",
-    "setuptools_scm[toml]>=6.0",
-    "setuptools_scm_git_archive",
-    "wheel"
-]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+#requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
-[tool.setuptools_scm]
-write_to = "pynsitu/_version.py"
-write_to_template = "__version__ = '{version}'"
+[project]
+name = "pynsitu"
+#dynamic = ["version"] # not working with local install
+version = "0.0.3" # Delete this line and add the line below to tell hatch to use dynamic versioning
+requires-python = ">=3.10"
+description = "Oceanographic in situ data analysis with pandas/xarray"
+readme = "README.md"
+authors = [
+  { name = "Aurelien Ponte", email = "aurelien.junk@gmail.com" }
+]
+classifiers = [
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Science/Research",
+        "Topic :: Scientific/Engineering",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+]
+license = "MIT"
+keywords = ["oceanography", "analysis", "in situ"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "numba",
+    "xarray",
+    "dask",
+    "geopandas",
+    "cartopy",
+    "hvplot",
+    "geoviews",
+    "folium",
+    "cmocean",
+    "gsw",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "flake8",
+    "black",
+    "codecov"
+]
+feature = [
+  "pyTMD",
+  "utide",
+]
+
+[project.urls]
+Homepage =  "https://github.com/apatlpo/pynsitu"
+Tracker =  "https://github.com/apatlpo/pynsitu/issues"
+Documentation = "https://pynsitu.readthedocs.io/en/latest/"
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
+
+# ******* Hatch configuration here ******* #
+
+# Setup dynamic versioning (this uses setuptools_scm on the backend)
+#[tool.hatch]
+#version.source = "vcs"
+#build.hooks.vcs.version-file = "src/pyospackage/_version.py"
+
+#[tool.hatch.metadata]
+#allow-direct-references = true
+
+#[tool.hatch.version]
+#path = "src/pynsitu/__about__.py"
+
+#[tool.hatch.build.targets.sdist]
+#include = ["src"]
+
+#[tool.hatch.build.targets.wheel]
+#packages = ["src/pynsitu"]

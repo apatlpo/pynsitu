@@ -11,7 +11,7 @@ import pynsitu as pyn
 ## -------------- method building used for testing
 
 # default timeseries
-tdefault = dict(start="01-01-2018", end="15-01-2018", freq="1H")
+tdefault = dict(start="01-01-2018", end="15-01-2018", freq="1h")
 
 
 @pytest.fixture()
@@ -25,11 +25,11 @@ def generate_trajectory_data_periodic(
     """Create a trajectory time series with looping."""
 
     time = pd.date_range(**tdefault)
-    time_scale = pd.Timedelta("1D")
+    time_scale = pd.Timedelta("1d")
     if time_units == "timedelta":
         time = time - time[0]
     elif time_units == "numeric":
-        time = (time - time[0]) / pd.Timedelta("1H")
+        time = (time - time[0]) / pd.Timedelta("1h")
         time_scale = 1.0
     if not uniform:
         nt = time.size
@@ -57,7 +57,7 @@ def generate_trajectory_data_periodic(
 @pytest.fixture()
 def sample_trajectory_data_steady():
     """Create a trajectory time series with a steady flow."""
-    freq = "1H"
+    freq = "1h"
     time = pd.date_range(start="2018-01-01", end="2018-01-15", freq=freq)
 
     ve, vn = 0.1, 0.1

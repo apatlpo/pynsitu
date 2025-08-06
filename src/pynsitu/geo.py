@@ -992,8 +992,8 @@ def compute_velocities(
         assert (
             df.dt.iloc[2:] == df.dt.iloc[1]
         ).all(), "time must be regularly sampled to apply spectral method"
-        dxdt = spectral_diff(df["x"], df["dt"][1:], 1)
-        dydt = spectral_diff(df["y"], df["dt"][1:], 1)
+        dxdt = spectral_diff(df["x"], df["dt"].iloc[1:], 1)
+        dydt = spectral_diff(df["y"], df["dt"].iloc[1:], 1)
         # skips first dt which is in general NaN
         centered = False
     elif distance == "xy":
@@ -1009,10 +1009,10 @@ def compute_velocities(
         # boundaries, impose constant acceleration
         i0, i1 = df.index[[0, -1]]
         # print( dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1]), dxdt[1], dxdt[2], dt[1] / dt[2] )
-        df.loc[i0, names[0]] = dxdt[1] - dt[1] / dt[2] * (dxdt[2] - dxdt[1])
-        df.loc[i0, names[1]] = dydt[1] - dt[1] / dt[2] * (dydt[2] - dydt[1])
-        df.loc[i1, names[0]] = dxdt[-2] + dt[-1] / dt[-2] * (dxdt[-2] - dxdt[-3])
-        df.loc[i1, names[1]] = dydt[-2] + dt[-1] / dt[-2] * (dydt[-2] - dydt[-3])
+        df.loc[i0, names[0]] = dxdt.iloc[1] - dt.iloc[1] / dt.iloc[2] * (dxdt.iloc[2] - dxdt.iloc[1])
+        df.loc[i0, names[1]] = dydt.iloc[1] - dt.iloc[1] / dt.iloc[2] * (dydt.iloc[2] - dydt.iloc[1])
+        df.loc[i1, names[0]] = dxdt.iloc[-2] + dt.iloc[-1] / dt.iloc[-2] * (dxdt.iloc[-2] - dxdt.iloc[-3])
+        df.loc[i1, names[1]] = dydt.iloc[-2] + dt.iloc[-1] / dt.iloc[-2] * (dydt.iloc[-2] - dydt.iloc[-3])
     else:
         df.loc[:, names[0]] = dxdt
         df.loc[:, names[1]] = dydt

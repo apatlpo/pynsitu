@@ -574,7 +574,11 @@ class Campaign(object):
         figsize: tuple, optional
             enforce the size of the output figure
         """
-        n = len(self.platforms)
+        n = 0
+        if self.deployments is not None:
+            n += len(self.deployments)
+        if self.platforms is not None:
+            n += len(self.platforms)
         if ax is None:
             if figsize is None:
                 figsize = (15, n / 4)

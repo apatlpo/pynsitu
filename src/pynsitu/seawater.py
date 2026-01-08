@@ -136,14 +136,14 @@ class PdSeawaterAccessor(SeawaterAccessor):
                 _lat = getattr(obj, k)
                 self._lat = k
                 fill_lat = True
-        if fill_lon:
-            obj.loc[:, self._lon] = _lon
-        if fill_lat:
-            obj.loc[:, self._lat] = _lat
         if not hasattr(self, "_lon"):
             raise AttributeError("Did not find an attribute longitude")
         if not hasattr(self, "_lat"):
             raise AttributeError("Did not find an attribute latitude")
+        if fill_lon:
+            obj.loc[:, self._lon] = _lon
+        if fill_lat:
+            obj.loc[:, self._lat] = _lat
         # check all values of lon/lat are not NaN
         if ~all(~pd.isna(obj[self._lon])) or ~all(~pd.isna(obj[self._lat])):
             print(

@@ -75,6 +75,8 @@ def plot_map(
         Center color limits (default is False)
     gridlines: boolean, optional
         Add grid lines (default is True)
+    gridkwargs: dict, optional
+        kwargs passed to gridlines
     bathy: str, optional
         Plot bathymetry (default is None)
         Need to provide path to bathymetry (see pynsitu.maps.load_bathy)
@@ -91,6 +93,7 @@ def plot_map(
         Add map tile as background
         If tuple, (tiler_name, style, zoom_level), e.g.:
             tile = ("GoogleTiles", "satellite", 11)
+        GoogleTiles styles:'street', 'satellite', 'terrain', and 'only_streets'
     **kwargs:
         passed to the plot of the da variable
     """
@@ -106,18 +109,17 @@ def plot_map(
 
         tile_cache = "/tmp/cartopy_cache"
         if isinstance(tile, int):
-            tile = ("GoogleTiles", "satellite", tile)
-            #tile = ("StadiaMapsTiles", "alidade_smooth", 11)
-            #("StadiaMapsTiles", "alidade_smooth", 11)
+            tile = ("GoogleTiles", {"style": "satellite"}, tile)
+            #tile = ("StadiaMapsTiles", {"style": "alidade_smooth"}, 11)
         tiler = getattr(cimgt, tile[0])
-        tile_style = tile[1]
+        tile_kwargs = tile[1]
         tile_level = tile[2]
         if len(tile) > 3:
             # trick to refresh tile cache
-            tile_cache = None
+            tile_kwargs["cache"] = False
         # https://wiki.openstreetmap.org/wiki/Zoom_levels
         # https://leaflet-extras.github.io/leaflet-providers/preview/
-        tile_handle = tiler(style=tile_style, cache=tile_cache)
+        tile_handle = tiler(**tile_kwargs)
         # about caching: https://github.com/SciTools/cartopy/pull/1533
         projection = tile_handle.crs
 
@@ -131,11 +133,9 @@ def plot_map(
 
     if extent is not None:
         # assert hasattr(ax, "set_extent"), "ax is not a cartopy axis"
-        ax.set_extent(extent)
+        ax.set_extent(extent, crs=crs)
 
     if tile is not None:
-        if isinstance(tile, int):
-            tile_level = tile
         ax.add_image(tile_handle, tile_level)
 
     # copy kwargs for update
@@ -147,10 +147,13 @@ def plot_map(
         kwargs["vmin"] = vmin
         kwargs["vmax"] = vmax
 
-    if bathy:
-        dab = load_bathy(bathy, bounds=extent)
-        if dab is not None:
+    if bathy is not None and bathy is not False:
+        if isinstance(bathy, xr.DataArray):
+            dab = bathy
+        else:
+            dab = load_bathy(bathy, bounds=extent)
             dab = dab["depth"]
+        if dab is not None:
             kwargs.update(cmap=cm.deep, vmin=0)
             if bathy_fill:
                 da = dab
@@ -165,7 +168,7 @@ def plot_map(
             **kwargs,
         )
 
-    if bathy and dab is not None:
+    if bathy is not None and bathy is not False and dab is not None:
         if bathy_levels is not None:
             if len(bathy_levels) == 3:
                 bathy_levels = np.arange(*bathy_levels)
@@ -188,6 +191,7 @@ def plot_map(
     if rivers:
         _plot_rivers(ax, rivers)
 
+    cbar = None
     if da is not None and colorbar:
         # cbar = fig.colorbar(im, extend="neither", shrink=0.7, **colorbar_kwargs)
         axins = inset_axes(
@@ -201,9 +205,8 @@ def plot_map(
         )
         # cbar = fig.colorbar(im, extend="neither", shrink=0.9,
         cbar = fig.colorbar(im, extend="neither", cax=axins, **colorbar_kwargs)
-    else:
-        cbar = None
 
+    gl = None
     if gridlines:
         gkwargs = dict(
             draw_labels=True,
@@ -226,7 +229,7 @@ def plot_map(
             },
         )  # "fontweight": "bold"
     #
-    return fig, ax, cbar
+    return fig, ax, dict(cbar=cbar, projection=proj, gridlines=gl)
 
 
 def get_projection(extent):

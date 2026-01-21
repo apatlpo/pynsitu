@@ -99,7 +99,11 @@ def load_constituents_properties(c=None):
         return df
     elif isinstance(c, str):
         p_names = ["amplitude", "phase", "omega", "alpha", "species"]
-        p = pyTMD.constituents._constituent_parameters(c) # imposes pyTMD>?.?.?
+        if hasattr(pyTMD, "constituents"):
+            p = pyTMD.constituents._constituent_parameters(c) # imposes pyTMD>?.?.?
+        else:
+            # older API
+            p = pyTMD.arguments._constituent_parameters(c)
         s = pd.Series({_n: _p for _n, _p in zip(p_names, p)})
         s["omega_cpd"] = s["omega"] * cpd
         return s

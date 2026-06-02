@@ -20,6 +20,7 @@ try:
     from bokeh.models import HoverTool, CustomJSHover
     from bokeh.models import CrosshairTool
     from bokeh.plotting import figure
+    from bokeh.models import ColumnDataSource, CustomJS
     import hvplot.pandas
 except:
     print("Warning: could not import bokeh")
@@ -486,17 +487,19 @@ class PdGeoAccessor(GeoAccessor):
             df = df.geo.compute_velocities()
             df = df.geo.compute_accelerations()
 
+        df = df.rename(columns={self._lon: "lon", self._lat: "lat"})
+
         if mindec:
-            _lon_tooltip = "@" + self._lon + "{custom}"
-            _lat_tooltip = "@" + self._lat + "{custom}"
+            _lon_tooltip = "@lon{custom}"
+            _lat_tooltip = "@lat{custom}"
             _lon_formatter = lon_hover_formatter
             _lat_formatter = lat_hover_formatter
             # ll_formater = FuncTickFormatter(code="""
             #    return Math.floor(tick) + " + " + (tick % 1).toFixed(2)
             # """)
         else:
-            _lon_tooltip = "@{" + self._lon + "}{0.4f}"
-            _lat_tooltip = "@{" + self._lat + "}{0.4f}"
+            _lon_tooltip = "@lon{0.4f}"
+            _lat_tooltip = "@lat{0.4f}"
             _lon_formatter = "printf"
             _lat_formatter = "printf"
 
@@ -544,7 +547,17 @@ class PdGeoAccessor(GeoAccessor):
 
         # create a new plot and add a renderer
         s1 = figure(title="longitude", **figkwargs)
-        s1.line("time", self._lon, source=df, line_width=lw, color=c)
+        #s1.line("time", self._lon, source=df, line_width=lw, color=c)
+        # convert to bokeh data source
+        source = ColumnDataSource(df.copy())
+        r1 = s1.line("time", "lon", source=source, line_width=lw, color=c)
+        debug_code = """
+        console.log("CURRENT SELECTION",
+                    cb_obj.indices)
+        """
+        callback = CustomJS(args=dict(source=source), code=debug_code)
+        r1.data_source.selected.js_on_change("indices", callback)
+        #source.selected.js_on_change("indices", callback)
         s1.add_tools(
             HoverTool(
                 tooltips=[
@@ -553,7 +566,7 @@ class PdGeoAccessor(GeoAccessor):
                 ],  #
                 formatters={
                     "@time": "datetime",
-                    "@" + self._lon: _lon_formatter,
+                    "@lon": _lon_formatter,
                 },  #'printf'
                 mode="vline",
             )
@@ -563,7 +576,7 @@ class PdGeoAccessor(GeoAccessor):
         S = [s1]
         #
         s2 = figure(title="latitude", x_range=s1.x_range, **figkwargs)
-        s2.line("time", self._lat, source=df, line_width=lw, color=c)
+        s2.line("time", "lat", source=df, line_width=lw, color=c)
         s2.add_tools(
             HoverTool(
                 tooltips=[
@@ -1140,6 +1153,138 @@ def spectral_diff(x, dt, order, dx0=0.0, time=None):
     elif order == 2:
         dx = dx + fit[0]
     return pd.Series(dx, index=x.index)
+
+
+# javascript code to copy selected point data to clipboard, requires shift+click on the point and a hover tool with time, lon and lat in the tooltip
+JS_copy_code="""
+
+    ////////////////////////////////////////////////////////////
+    // SHIFT KEY TRACKING
+    ////////////////////////////////////////////////////////////
+
+    if (!window._bokeh_shift_initialized) {
+
+        window._bokeh_shift_pressed = false;
+
+        document.addEventListener("keydown", (e) => {
+            window._bokeh_shift_pressed = e.shiftKey;
+        });
+
+        document.addEventListener("keyup", (e) => {
+            window._bokeh_shift_pressed = e.shiftKey;
+        });
+
+        window._bokeh_shift_initialized = true;
+
+        console.log("Shift tracking initialized");
+    }
+
+    ////////////////////////////////////////////////////////////
+    // GET SELECTION
+    ////////////////////////////////////////////////////////////
+
+    const inds = source.selected.indices;
+
+    console.log("Selection changed:", inds);
+
+    if (inds.length === 0) {
+        return;
+    }
+
+    ////////////////////////////////////////////////////////////
+    // REQUIRE SHIFT+CLICK
+    ////////////////////////////////////////////////////////////
+
+    if (!window._bokeh_shift_pressed) {
+        console.log("Shift not pressed");
+        return;
+    }
+
+    ////////////////////////////////////////////////////////////
+    // BUILD TEXT
+    ////////////////////////////////////////////////////////////
+
+    const i = inds[0];
+
+    // format lon/lat in minute/decimals
+    function format_coord(c) {
+        const sign = c < 0 ? "-" : "";
+        c = Math.abs(c);
+        const d = Math.floor(c);
+        const m = (c - d) * 60;
+        return `${sign}${d} ${m.toFixed(2)}'`;
+    }
+    const txt =
+        `time=${source.data.time[i]}, ` +
+        `lon=${format_coord(source.data.lon[i])}, ` +
+        `lat=${format_coord(source.data.lat[i])}`;
+
+    console.log("Copying:", txt);
+
+    ////////////////////////////////////////////////////////////
+    // FALLBACK COPY METHOD
+    ////////////////////////////////////////////////////////////
+
+    function fallbackCopy(text) {
+
+        const textarea = document.createElement("textarea");
+
+        textarea.value = text;
+
+        // Prevent scrolling on iOS etc.
+        textarea.style.position = "fixed";
+        textarea.style.left = "-999999px";
+
+        document.body.appendChild(textarea);
+
+        textarea.focus();
+        textarea.select();
+
+        let success = false;
+
+        try {
+            success = document.execCommand("copy");
+            console.log("execCommand success?", success);
+        } catch(err) {
+            console.error("execCommand failed:", err);
+        }
+
+        document.body.removeChild(textarea);
+
+        return success;
+    }
+
+    ////////////////////////////////////////////////////////////
+    // MODERN CLIPBOARD API + FALLBACK
+    ////////////////////////////////////////////////////////////
+
+    async function copyText(text) {
+
+        // Modern API first
+        if (navigator.clipboard && window.isSecureContext) {
+
+            try {
+                await navigator.clipboard.writeText(text);
+
+                console.log("navigator.clipboard success");
+
+                return;
+
+            } catch(err) {
+
+                console.warn(
+                    "navigator.clipboard failed",
+                    err
+                );
+            }
+        }
+
+        // Fallback
+        fallbackCopy(text);
+    }
+
+    copyText(txt);
+"""
 
 
 # ----------------------------- xarray accessor --------------------------------
